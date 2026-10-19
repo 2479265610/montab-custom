@@ -440,6 +440,11 @@ internal sealed unsafe class PanelWindow
                         if (PInvoke.IsIconic(pending.Hwnd))
                         {
                             _switch.Activate(pending.Hwnd);
+                            // Свёрнутое окно не поднялось — почти всегда это окно
+                            // программы, запущенной от администратора: UIPI не даёт
+                            // обычному процессу развернуть его.
+                            if (PInvoke.IsIconic(pending.Hwnd))
+                                HintElevatedWindow();
                         }
                         else if (pending.Hwnd == _tracker.ForegroundWindow)
                         {
@@ -981,6 +986,33 @@ internal sealed unsafe class PanelWindow
     {
         if (_hwnd != default)
             PInvoke.InvalidateRect(_hwnd, null, true);
+    }
+
+    static bool s_elevationHintShown;
+
+    /// <summary>
+    /// Окно не развернулось: обычно причина в том, что программа запущена
+    /// от имени администратора, а панель — нет. Объясняем один раз за сеанс.
+    /// </summary>
+    void HintElevatedWindow()
+    {
+        if (s_elevationHintShown)
+            return;
+        s_elevationHintShown = true;
+
+        string message =
+            "这个窗口无法被切换或还原。\n\n" +
+            "常见原因：它是用「管理员身份」启动的（例如 Edge/Chrome 以管理员运行时），" +
+            "而本面板是普通权限，Windows 会拦截跨权限的窗口操作。\n\n" +
+            "解决办法：彻底退出该程序，用普通方式重新打开一次即可；" +
+            "或者右键以管理员身份运行本面板。";
+
+        fixed (char* text = message)
+        fixed (char* caption = "montab")
+        {
+            PInvoke.MessageBox(_hwnd, text, caption,
+                MESSAGEBOX_STYLE.MB_OK | MESSAGEBOX_STYLE.MB_ICONINFORMATION | MESSAGEBOX_STYLE.MB_TOPMOST);
+        }
     }
 
     /// <summary>Сворачивает все обычные окна — «показать рабочий стол».</summary>
