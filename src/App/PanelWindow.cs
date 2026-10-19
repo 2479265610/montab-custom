@@ -662,6 +662,7 @@ internal sealed unsafe class PanelWindow
     void OnPress(int x, int y, bool ctrl)
     {
         _pressGrip = false;
+        Diag.Log($"press {x},{y} pin={Inside(_layout.PinButton, x, y)} desk={Inside(_layout.DesktopBar, x, y)} gear={Inside(_layout.GearButton, x, y)} gearRect={_layout.GearButton.left},{_layout.GearButton.top},{_layout.GearButton.right},{_layout.GearButton.bottom}");
 
         // Кнопки над лентой. Раньше они попадали в ветку «перетаскивание панели»
         // (HitTest там пустой), поэтому клик по «Показать рабочий стол» не срабатывал.
