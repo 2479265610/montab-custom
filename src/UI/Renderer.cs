@@ -22,6 +22,7 @@ internal sealed unsafe class Renderer : IDisposable
     static readonly COLORREF L_TextDim = new(0x00736E6E);    // #6E6E73
     static readonly COLORREF L_Frame = new(0x00DBD6D6);      // #D6D6DB
     static readonly COLORREF L_DragFill = new(0x00E5E0E0);   // #E0E0E5
+    static readonly COLORREF L_GripLocked = new(0x00C6C6CB); // #CBC6C6
 
     // Тёмная тема
     static readonly COLORREF D_Bg = new(0x001C1A1A);         // #1A1A1C
@@ -31,6 +32,7 @@ internal sealed unsafe class Renderer : IDisposable
     static readonly COLORREF D_TextDim = new(0x00938E8E);    // #8E8E93
     static readonly COLORREF D_Frame = new(0x003C3A3A);      // #3A3A3C
     static readonly COLORREF D_DragFill = new(0x00463C3C);   // #3C3C46
+    static readonly COLORREF D_GripLocked = new(0x004E4C4C); // #4C4C4E
 
     // Общие для обеих тем
     static readonly COLORREF Accent = new(0x00FF840A);       // #0A84FF
@@ -54,7 +56,7 @@ internal sealed unsafe class Renderer : IDisposable
     // Текущий набор (переключается через SetDark)
     bool _dark;
     HBRUSH _bgBrush, _stripBrush, _stripActiveBrush, _frameBrush, _dragFillBrush;
-    COLORREF _textColor, _textDimColor;
+    COLORREF _textColor, _textDimColor, _gripLockedColor;
 
     // Кеш на текущий DPI
     uint _dpi;
@@ -80,6 +82,7 @@ internal sealed unsafe class Renderer : IDisposable
         _dragFillBrush = dark ? _dragFillDark : _dragFillLight;
         _textColor = dark ? D_Text : L_Text;
         _textDimColor = dark ? D_TextDim : L_TextDim;
+        _gripLockedColor = dark ? D_GripLocked : L_GripLocked;
     }
 
     public bool IsDark => _dark;
@@ -263,20 +266,18 @@ internal sealed unsafe class Renderer : IDisposable
         PInvoke.FillRect(_memDc, in r, isDragged ? _dragFillBrush : isActive ? _stripActiveBrush : _stripBrush);
 
         // Ручка перетаскивания: две косые черты в левом нижнем углу карточки.
-        // При заблокированном порядке место оставляем, но черты не рисуем —
-        // так сразу видно, что сортировка выключена.
+        // При заблокированном порядке она остаётся на месте, но гаснет —
+        // так видно и саму ручку, и то, что сортировка сейчас выключена.
         var grip = LayoutEngine.GripRect(r);
-        if (!locked)
+        if (gripHover || isDragged)
+            PInvoke.FillRect(_memDc, in grip, _stripActiveBrush);
+        PInvoke.SetTextColor(_memDc, locked ? _gripLockedColor
+            : gripHover || isDragged ? _textColor : _textDimColor);
+        fixed (char* g = "//")
         {
-            if (gripHover || isDragged)
-                PInvoke.FillRect(_memDc, in grip, _stripActiveBrush);
-            PInvoke.SetTextColor(_memDc, gripHover || isDragged ? _textColor : _textDimColor);
-            fixed (char* g = "//")
-            {
-                PInvoke.DrawText(_memDc, g, 2, &grip,
-                    DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
-                    DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
-            }
+            PInvoke.DrawText(_memDc, g, 2, &grip,
+                DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
+                DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
         }
 
         int iconX = grip.right + _pad;
