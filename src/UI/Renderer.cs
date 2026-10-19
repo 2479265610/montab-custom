@@ -86,7 +86,7 @@ internal sealed unsafe class Renderer : IDisposable
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
         WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default,
-        RECT pinButton = default, bool locked = false)
+        RECT pinButton = default, bool locked = false, WindowItem? hoverGrip = null)
     {
         SetDpi(dpi);
 
@@ -119,7 +119,25 @@ internal sealed unsafe class Renderer : IDisposable
                     DrawOutline(li.Bounds, isActive ? _accentBrush : _frameBrush, isActive ? _thickBorder : _thinBorder);
                 if (isDragged)
                     DrawOutline(li.Bounds, _dragFrameBrush, _thickBorder);
-                DrawLabel(li, isActive, li.Window == hoverClose, isDragged);
+                DrawLabel(li, isActive, li.Window == hoverClose, isDragged, li.Window == hoverGrip, locked);
+            }
+
+            // «Замораживаем» заголовок вместе с точками-ручкой: карточки, уехавшие
+            // под него при прокрутке, закрашиваются фоном панели, иначе превью
+            // просвечивало в пустых местах между точками.
+            if (desktopBar.bottom > desktopBar.top && desktopBar.top > client.top)
+            {
+                var head = new RECT
+                {
+                    left = client.left,
+                    top = client.top,
+                    right = client.right,
+                    // Кроем и полосу с кнопками целиком: между ними остаётся зазор,
+                    // в который иначе просвечивала бы уехавшая карточка.
+                    bottom = desktopBar.bottom,
+                };
+                PInvoke.FillRect(_memDc, in head, _bgBrush);
+                DrawHeaderGrip(client);
             }
 
             // Кнопки рисуем последними: они всегда поверх прокручиваемой ленты,
@@ -239,12 +257,29 @@ internal sealed unsafe class Renderer : IDisposable
         }
     }
 
-    void DrawLabel(LayoutItem li, bool isActive, bool closeHover, bool isDragged)
+    void DrawLabel(LayoutItem li, bool isActive, bool closeHover, bool isDragged, bool gripHover, bool locked)
     {
         RECT r = li.Label;
         PInvoke.FillRect(_memDc, in r, isDragged ? _dragFillBrush : isActive ? _stripActiveBrush : _stripBrush);
 
-        int iconX = r.left + _pad;
+        // Ручка перетаскивания: две косые черты в левом нижнем углу карточки.
+        // При заблокированном порядке место оставляем, но черты не рисуем —
+        // так сразу видно, что сортировка выключена.
+        var grip = LayoutEngine.GripRect(r);
+        if (!locked)
+        {
+            if (gripHover || isDragged)
+                PInvoke.FillRect(_memDc, in grip, _stripActiveBrush);
+            PInvoke.SetTextColor(_memDc, gripHover || isDragged ? _textColor : _textDimColor);
+            fixed (char* g = "//")
+            {
+                PInvoke.DrawText(_memDc, g, 2, &grip,
+                    DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
+                    DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
+            }
+        }
+
+        int iconX = grip.right + _pad;
         int iconY = r.top + (r.bottom - r.top - _iconSize) / 2;
         if (li.Window.Icon != default)
             PInvoke.DrawIconEx(_memDc, iconX, iconY, li.Window.Icon, _iconSize, _iconSize, 0, default, DI_FLAGS.DI_NORMAL);

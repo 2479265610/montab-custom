@@ -151,5 +151,16 @@ internal sealed class LayoutEngine
         return new RECT { left = label.right - size, top = label.top, right = label.right, bottom = label.bottom };
     }
 
+    /// <summary>
+    /// «Ручка» перетаскивания карточки — квадрат у левого края подписи
+    /// (то есть в левом нижнем углу карточки). Сортировка запускается только
+    /// отсюда: нажатие на само превью больше не двигает порядок.
+    /// </summary>
+    public static RECT GripRect(RECT label)
+    {
+        int size = label.bottom - label.top;
+        return new RECT { left = label.left, top = label.top, right = label.left + size, bottom = label.bottom };
+    }
+
     public static int Scale(int logical, uint dpi) => (int)(logical * dpi / 96.0);
 }

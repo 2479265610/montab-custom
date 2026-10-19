@@ -85,6 +85,9 @@ internal sealed unsafe class PanelWindow
     PressState _press;
     WindowItem? _pressItem;
     WindowItem? _hoverClose;
+    WindowItem? _hoverGrip;
+    // Сортировка запускается только из «ручки» в углу карточки, а не с превью
+    bool _pressGrip;
     bool _swallowNextUp;
     int _pressX, _pressY;
 
@@ -307,9 +310,13 @@ internal sealed unsafe class PanelWindow
                         _host.Settings.MinimizedAsCard);
                 }
                 _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow, _layout.DesktopBar.bottom);
+                // «Взятая» карточка подсвечивается сразу по нажатию на ручку —
+                // видно, что её можно тянуть, ещё до первого движения.
+                var lifted = _press == PressState.Dragging ||
+                             (_press == PressState.Pressed && _pressGrip) ? _pressItem : null;
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
-                    _press == PressState.Dragging ? _pressItem : null, _layout.DesktopBar,
-                    _layout.PinButton, _host.Settings.LockOrder);
+                    lifted, _layout.DesktopBar,
+                    _layout.PinButton, _host.Settings.LockOrder, _hoverGrip);
                 _scrollbar?.Update(_layout.TotalHeight, client.bottom - client.top, _scrollOffset, _pointerNearby);
                 return new LRESULT(0);
 
@@ -387,8 +394,9 @@ internal sealed unsafe class PanelWindow
                 {
                     PInvoke.ReleaseCapture(); // ресайз завершит WM_CAPTURECHANGED
                 }
-                else if (_press == PressState.Dragging)
+                else if (_press == PressState.Dragging || _pressGrip)
                 {
+                    // Отпускание «ручки» — это не клик по окну: ничего не активируем
                     EndPress();
                 }
                 else if (_press == PressState.PanelDrag)
@@ -446,9 +454,10 @@ internal sealed unsafe class PanelWindow
             case PInvoke.WM_MOUSELEAVE:
                 CancelHoverZoom();
                 PointerMaybeGone();
-                if (_hoverClose is not null)
+                if (_hoverClose is not null || _hoverGrip is not null)
                 {
                     _hoverClose = null;
+                    _hoverGrip = null;
                     PInvoke.InvalidateRect(hwnd, null, false);
                 }
                 break;
@@ -466,6 +475,7 @@ internal sealed unsafe class PanelWindow
                 }
                 _press = PressState.None;
                 _pressItem = null;
+                _pressGrip = false;
                 break;
 
             case PInvoke.WM_DPICHANGED:
@@ -651,6 +661,8 @@ internal sealed unsafe class PanelWindow
 
     void OnPress(int x, int y, bool ctrl)
     {
+        _pressGrip = false;
+
         // Кнопки над лентой. Раньше они попадали в ветку «перетаскивание панели»
         // (HitTest там пустой), поэтому клик по «Показать рабочий стол» не срабатывал.
         if (Inside(_layout.PinButton, x, y))
@@ -661,6 +673,25 @@ internal sealed unsafe class PanelWindow
         if (Inside(_layout.DesktopBar, x, y))
         {
             ShowDesktop();
+            return;
+        }
+
+        // «Ручка» карточки (две косые черты в её левом нижнем углу) — единственное
+        // место, откуда начинается перетаскивание по списку. Раньше им было всё
+        // превью целиком, и карточки случайно уезжали при обычном клике.
+        if (HitTest(x, y) is { } gripLi && !_host.Settings.LockOrder &&
+            Inside(LayoutEngine.GripRect(gripLi.Label), x, y))
+        {
+            CancelPendingActivation();
+            ClearHoverCandidate();
+            _press = PressState.Pressed;
+            _pressGrip = true;
+            _pressItem = gripLi.Window;
+            _pressX = x;
+            _pressY = y;
+            PInvoke.SetCapture(_hwnd);
+            PInvoke.SetCursor(SizeNSCursor);
+            PInvoke.InvalidateRect(_hwnd, null, false); // подсветка «взятой» карточки
             return;
         }
 
@@ -705,6 +736,10 @@ internal sealed unsafe class PanelWindow
             case PressState.Pressed:
                 if (Math.Abs(x - _pressX) > _dragThresholdPx || Math.Abs(y - _pressY) > _dragThresholdPx)
                 {
+                    // Тянем только за «ручку»: иначе жест по превью — это клик/лупа,
+                    // а не смена порядка.
+                    if (!_pressGrip)
+                        break;
                     CancelHoverZoom();
                     CancelPendingActivation();
                     _press = PressState.Dragging;
@@ -830,12 +865,19 @@ internal sealed unsafe class PanelWindow
     void UpdateCloseHover(LayoutItem? over, int x, int y)
     {
         WindowItem? hover = null;
-        if (over is { } li && Inside(LayoutEngine.CloseRect(li.Label), x, y))
-            hover = li.Window;
+        WindowItem? grip = null;
+        if (over is { } li)
+        {
+            if (Inside(LayoutEngine.CloseRect(li.Label), x, y))
+                hover = li.Window;
+            else if (!_host.Settings.LockOrder && Inside(LayoutEngine.GripRect(li.Label), x, y))
+                grip = li.Window;
+        }
 
-        if (hover != _hoverClose)
+        if (hover != _hoverClose || grip != _hoverGrip)
         {
             _hoverClose = hover;
+            _hoverGrip = grip;
             PInvoke.InvalidateRect(_hwnd, null, false);
         }
 
@@ -867,9 +909,10 @@ internal sealed unsafe class PanelWindow
 
     void EndPress()
     {
-        bool wasDragging = _press == PressState.Dragging;
+        bool wasDragging = _press == PressState.Dragging || _pressGrip;
         _press = PressState.None;
         _pressItem = null;
+        _pressGrip = false;
         PInvoke.ReleaseCapture();
         if (wasDragging)
             PInvoke.InvalidateRect(_hwnd, null, false); // снять подсветку таскаемого
