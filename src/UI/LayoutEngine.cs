@@ -20,6 +20,10 @@ internal sealed class LayoutEngine
     const int GapLogical = 8;
     const int PaddingLogical = 10;
     const int MinPreviewHeightLogical = 48;
+    // Полоска под превью: в ней живёт «ручка» перетаскивания в правом нижнем углу.
+    // Нужна потому, что DWM рисует миниатюру поверх нашей GDI-отрисовки —
+    // на самом превью ручку было бы не видно.
+    public const int CornerLogical = 15;
     /// <summary>Высота кнопки «Показать рабочий стол» под ручкой.</summary>
     const int DesktopBarLogical = 30;
     const double MaxPreviewHeightFactor = 1.6; // не выше 1.6 ширины (очень «портретные» окна)
@@ -28,9 +32,12 @@ internal sealed class LayoutEngine
 
     // Предвычисленные размеры на текущий DPI
     uint _dpi;
-    int _header, _strip, _label, _gap, _padding, _minPreview, _desktopBar;
+    int _header, _strip, _label, _gap, _padding, _minPreview, _desktopBar, _corner;
 
     public int TotalHeight { get; private set; }
+
+    /// <summary>Сторона квадратной «ручки» в правом нижнем углу карточки.</summary>
+    public int GripSize => _corner;
 
     /// <summary>Область кнопки «Показать рабочий стол» в клиентских координатах.</summary>
     public RECT DesktopBar { get; private set; }
@@ -92,11 +99,22 @@ internal sealed class LayoutEngine
                 int previewHeight = Math.Clamp(
                     (int)Math.Round(width / aspect), _minPreview, (int)(width * MaxPreviewHeightFactor));
 
-                // Превью сверху, подпись снизу: «ручка» перетаскивания живёт
-                // в подписи, то есть в левом нижнем углу карточки, как и просили.
-                bounds = new RECT { left = left, top = y, right = left + width, bottom = y + _label + previewHeight };
-                preview = new RECT { left = left, top = y, right = left + width, bottom = y + previewHeight };
-                label = new RECT { left = left, top = y + previewHeight, right = left + width, bottom = bounds.bottom };
+                // Подпись сверху, превью под ней, снизу — узкая полоска под «ручку».
+                bounds = new RECT
+                {
+                    left = left,
+                    top = y,
+                    right = left + width,
+                    bottom = y + _label + previewHeight + _corner,
+                };
+                label = new RECT { left = left, top = y, right = left + width, bottom = y + _label };
+                preview = new RECT
+                {
+                    left = left,
+                    top = y + _label,
+                    right = left + width,
+                    bottom = bounds.bottom - _corner,
+                };
             }
 
             _result.Add(new LayoutItem(item, bounds, preview, label, isStrip));
@@ -119,6 +137,7 @@ internal sealed class LayoutEngine
         _padding = Scale(PaddingLogical, dpi);
         _minPreview = Scale(MinPreviewHeightLogical, dpi);
         _desktopBar = Scale(DesktopBarLogical, dpi);
+        _corner = Scale(CornerLogical, dpi);
     }
 
     /// <summary>
@@ -153,14 +172,18 @@ internal sealed class LayoutEngine
     }
 
     /// <summary>
-    /// «Ручка» перетаскивания карточки — квадрат у левого края подписи
-    /// (то есть в левом нижнем углу карточки). Сортировка запускается только
-    /// отсюда: нажатие на само превью больше не двигает порядок.
+    /// «Ручка» перетаскивания карточки — квадрат в её правом нижнем углу.
+    /// Сортировка запускается только отсюда: нажатие на превью больше не двигает порядок.
     /// </summary>
-    public static RECT GripRect(RECT label)
+    public static RECT GripRect(RECT bounds, int size)
     {
-        int size = label.bottom - label.top;
-        return new RECT { left = label.left, top = label.top, right = label.left + size, bottom = label.bottom };
+        return new RECT
+        {
+            left = bounds.right - size,
+            top = bounds.bottom - size,
+            right = bounds.right,
+            bottom = bounds.bottom,
+        };
     }
 
     public static int Scale(int logical, uint dpi) => (int)(logical * dpi / 96.0);

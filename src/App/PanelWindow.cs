@@ -679,8 +679,8 @@ internal sealed unsafe class PanelWindow
         // «Ручка» карточки (две косые черты в её левом нижнем углу) — единственное
         // место, откуда начинается перетаскивание по списку. Раньше им было всё
         // превью целиком, и карточки случайно уезжали при обычном клике.
-        if (HitTest(x, y) is { } gripLi && !_host.Settings.LockOrder &&
-            Inside(LayoutEngine.GripRect(gripLi.Label), x, y))
+        if (HitTest(x, y) is { IsStrip: false } gripLi && !_host.Settings.LockOrder &&
+            Inside(LayoutEngine.GripRect(gripLi.Bounds, _layout.GripSize), x, y))
         {
             CancelPendingActivation();
             ClearHoverCandidate();
@@ -870,7 +870,7 @@ internal sealed unsafe class PanelWindow
         {
             if (Inside(LayoutEngine.CloseRect(li.Label), x, y))
                 hover = li.Window;
-            else if (!_host.Settings.LockOrder && Inside(LayoutEngine.GripRect(li.Label), x, y))
+            else if (!_host.Settings.LockOrder && Inside(LayoutEngine.GripRect(li.Bounds, _layout.GripSize), x, y))
                 grip = li.Window;
         }
 
