@@ -104,14 +104,13 @@ internal sealed unsafe class Renderer : IDisposable
 
             PInvoke.FillRect(_memDc, in client, _bgBrush);
             DrawHeaderGrip(client);
-            if (desktopBar.bottom > desktopBar.top)
-                DrawButton(desktopBar, "显示桌面", false);
-            if (pinButton.bottom > pinButton.top)
-                DrawPinButton(pinButton, locked);
 
             foreach (var li in layout)
             {
                 if (li.Bounds.bottom < client.top || li.Bounds.top > client.bottom)
+                    continue;
+                // Полностью уехавшую под «замороженный» заголовок карточку не рисуем
+                if (desktopBar.bottom > desktopBar.top && li.Bounds.bottom <= desktopBar.bottom)
                     continue;
 
                 bool isActive = li.Window.Hwnd == activeWindow;
@@ -122,6 +121,13 @@ internal sealed unsafe class Renderer : IDisposable
                     DrawOutline(li.Bounds, _dragFrameBrush, _thickBorder);
                 DrawLabel(li, isActive, li.Window == hoverClose, isDragged);
             }
+
+            // Кнопки рисуем последними: они всегда поверх прокручиваемой ленты,
+            // то есть заголовок остаётся «замороженным».
+            if (desktopBar.bottom > desktopBar.top)
+                DrawButton(desktopBar, "显示桌面", false);
+            if (pinButton.bottom > pinButton.top)
+                DrawPinButton(pinButton, locked);
 
             PInvoke.BitBlt(hdc, 0, 0, width, height, _memDc, 0, 0, ROP_CODE.SRCCOPY);
         }

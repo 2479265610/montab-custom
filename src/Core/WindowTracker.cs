@@ -194,8 +194,9 @@ internal sealed unsafe class WindowTracker : IDisposable
             return;
 
         var item = CreateItem(hwnd);
-        // Новые живые — сверху; новые свёрнутые — первыми среди полосок
-        _items.Insert(item.IsMinimized ? StripBoundary() : 0, item);
+        // Новые окна встают в конец своей секции, как в системной панели задач:
+        // уже открытые карточки не сдвигаются, порядок остаётся стабильным.
+        _items.Insert(item.IsMinimized ? _items.Count : StripBoundary(), item);
         _byHwnd[hwnd] = item;
         Changed?.Invoke();
     }
@@ -217,9 +218,10 @@ internal sealed unsafe class WindowTracker : IDisposable
     /// </summary>
     void Reposition(WindowItem item)
     {
-        if (!_items.Remove(item))
-            return;
-        _items.Insert(StripBoundary(), item);
+        // Смена состояния окна не переставляет карточку: порядок должен
+        // оставаться на месте, как у закреплённой панели задач.
+        if (_items.Contains(item))
+            Changed?.Invoke();
     }
 
     public bool TryGet(HWND hwnd, out WindowItem item) => _byHwnd.TryGetValue(hwnd, out item!);

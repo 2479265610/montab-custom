@@ -306,7 +306,7 @@ internal sealed unsafe class PanelWindow
                     _layoutItems = _layout.Compute(_mine, client, _dpi, _scrollOffset,
                         _host.Settings.MinimizedAsCard);
                 }
-                _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow);
+                _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow, _layout.DesktopBar.bottom);
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
                     _press == PressState.Dragging ? _pressItem : null, _layout.DesktopBar,
                     _layout.PinButton, _host.Settings.LockOrder);

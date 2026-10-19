@@ -27,7 +27,7 @@ internal sealed unsafe class ThumbnailManager(HWND panel) : IDisposable
     /// <summary>Затенение превью активного окна (255 = непрозрачно).</summary>
     const byte ActiveOpacity = 110;
 
-    public void Sync(IReadOnlyList<LayoutItem> layout, RECT client, HWND activeWindow)
+    public void Sync(IReadOnlyList<LayoutItem> layout, RECT client, HWND activeWindow, int topClip = 0)
     {
         _wanted.Clear();
 
@@ -37,6 +37,10 @@ internal sealed unsafe class ThumbnailManager(HWND panel) : IDisposable
                 continue;
             if (li.Preview.bottom <= client.top || li.Preview.top >= client.bottom)
                 continue; // вне viewport — поток не нужен
+            // Заголовок «заморожен»: карточка, уехавшая под него, превью не показывает,
+            // иначе DWM-миниатюра легла бы поверх кнопок.
+            if (li.Preview.top < topClip)
+                continue;
 
             HWND source = li.Window.Hwnd;
             _wanted.Add(source);
