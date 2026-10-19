@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Montab.Config;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -592,6 +594,7 @@ internal sealed unsafe class SettingsWindow
         s_classRegistered = true;
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     static LRESULT StaticWndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam)
     {
         try
