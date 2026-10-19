@@ -10,7 +10,7 @@ namespace Montab.Core;
 /// активному окну (и фокус после скрытия) идёт в последнее по истории
 /// открытое окно; скрытые в полоску исключаются фильтром.
 /// </summary>
-internal sealed class SwitchController
+internal sealed unsafe class SwitchController
 {
     const byte VkMenu = 0x12; // VK_MENU (Alt)
     const int MaxHistory = 32;
