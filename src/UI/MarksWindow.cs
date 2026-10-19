@@ -101,10 +101,10 @@ internal sealed unsafe class MarksWindow
         // Порядок зафиксирован — ручек не рисуем вовсе
         if (!locked)
         {
-            int length = LayoutEngine.Scale(30, dpi);
-            int gap = LayoutEngine.Scale(7, dpi);
+            int length = LayoutEngine.Scale(17, dpi);
+            int gap = LayoutEngine.Scale(4, dpi);
             int inset = LayoutEngine.Scale(2, dpi);
-            int thick = Math.Max(1, LayoutEngine.Scale(2, dpi));
+            int thick = Math.Max(1, LayoutEngine.Scale(1, dpi));
             uint basePixel = dark ? 0xFF737378 : 0xFFA8A8AE;
             uint hotPixel = 0xFFFF840A; // #0A84FF в BGRA
 
@@ -117,7 +117,7 @@ internal sealed unsafe class MarksWindow
 
                 int x = li.Bounds.left + inset;
                 int y = li.Bounds.bottom - inset;
-                int len = Math.Min(length, Math.Max(8, (li.Bounds.right - li.Bounds.left) / 3));
+                int len = Math.Min(length, Math.Max(6, (li.Bounds.right - li.Bounds.left) / 5));
                 uint pixel = li.Window == active ? hotPixel : basePixel;
 
                 // Верхняя косая: от левого края вниз к нижнему — вместе с углом треугольник
