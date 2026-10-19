@@ -242,7 +242,6 @@ internal sealed unsafe class PanelHost
     /// <summary>Страница настроек (одна на приложение, открывается с панели или из трея).</summary>
     public void OpenSettings(string device)
     {
-        Diag.Log($"opensettings device={device}");
         _settingsWindow ??= new SettingsWindow(this, device);
         _settingsWindow.Show(_hInstance);
     }
