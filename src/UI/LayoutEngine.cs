@@ -20,10 +20,8 @@ internal sealed class LayoutEngine
     const int GapLogical = 8;
     const int PaddingLogical = 10;
     const int MinPreviewHeightLogical = 48;
-    // Полоска под превью: в ней живёт «ручка» перетаскивания в правом нижнем углу.
-    // Нужна потому, что DWM рисует миниатюру поверх нашей GDI-отрисовки —
-    // на самом превью ручку было бы не видно.
-    public const int CornerLogical = 15;
+    // Сторона зоны захвата «ручки» в левом нижнем углу карточки.
+    public const int CornerLogical = 28;
     /// <summary>Высота кнопки «Показать рабочий стол» под ручкой.</summary>
     const int DesktopBarLogical = 30;
     const double MaxPreviewHeightFactor = 1.6; // не выше 1.6 ширины (очень «портретные» окна)
@@ -109,13 +107,13 @@ internal sealed class LayoutEngine
                 int previewHeight = Math.Clamp(
                     (int)Math.Round(width / aspect), _minPreview, (int)(width * MaxPreviewHeightFactor));
 
-                // Подпись сверху, превью под ней, снизу — узкая полоска под «ручку».
+                // Подпись сверху, превью под ней — до самого низа карточки.
                 bounds = new RECT
                 {
                     left = left,
                     top = y,
                     right = left + width,
-                    bottom = y + _label + previewHeight + _corner,
+                    bottom = y + _label + previewHeight,
                 };
                 label = new RECT { left = left, top = y, right = left + width, bottom = y + _label };
                 preview = new RECT
@@ -123,7 +121,7 @@ internal sealed class LayoutEngine
                     left = left,
                     top = y + _label,
                     right = left + width,
-                    bottom = bounds.bottom - _corner,
+                    bottom = bounds.bottom,
                 };
             }
 
@@ -182,16 +180,17 @@ internal sealed class LayoutEngine
     }
 
     /// <summary>
-    /// «Ручка» перетаскивания карточки — квадрат в её правом нижнем углу.
-    /// Сортировка запускается только отсюда: нажатие на превью больше не двигает порядок.
+    /// Зона захвата «ручки» перетаскивания — квадрат в левом нижнем углу карточки
+    /// (сами косые рисует отдельный оверлей поверх превью). Нажатие только здесь
+    /// запускает сортировку: клик по превью больше не двигает порядок.
     /// </summary>
     public static RECT GripRect(RECT bounds, int size)
     {
         return new RECT
         {
-            left = bounds.right - size,
+            left = bounds.left,
             top = bounds.bottom - size,
-            right = bounds.right,
+            right = bounds.left + size,
             bottom = bounds.bottom,
         };
     }

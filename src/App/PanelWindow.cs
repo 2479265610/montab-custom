@@ -68,6 +68,7 @@ internal sealed unsafe class PanelWindow
     AppBar? _appBar;
     ThumbnailManager? _thumbs;
     ScrollBarWindow? _scrollbar;
+    MarksWindow? _marks;
     bool _pointerNearby;
     bool _updatingPosition;
     bool _resizing;
@@ -130,6 +131,7 @@ internal sealed unsafe class PanelWindow
         _renderer.ApplyTheme(_host.Settings.Theme == ThemeMode.Dark);
         ApplyGlass();
         _scrollbar = new ScrollBarWindow(this, _hwnd, hInstance);
+        _marks = new MarksWindow(_hwnd, hInstance);
         _appBar = new AppBar(_hwnd, PInvoke.RegisterWindowMessage("montab.appbar"));
         _appBar.Register();
         UpdatePosition();
@@ -317,6 +319,10 @@ internal sealed unsafe class PanelWindow
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
                     lifted, _layout.DesktopBar,
                     _layout.PinButton, _host.Settings.LockOrder, _hoverGrip, _layout.GearButton);
+                // Косые «ручки» — отдельным слоем поверх превью (DWM их перекрывает)
+                _marks?.Render(_layoutItems, client, _dpi,
+                    _host.Settings.Theme == ThemeMode.Dark, _host.Settings.LockOrder,
+                    lifted ?? _hoverGrip);
                 _scrollbar?.Update(_layout.TotalHeight, client.bottom - client.top, _scrollOffset, _pointerNearby);
                 return new LRESULT(0);
 
@@ -519,6 +525,7 @@ internal sealed unsafe class PanelWindow
                 SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             SetDpi(PInvoke.GetDpiForWindow(_hwnd));
             _scrollbar?.Layout(rc, _dpi, _mon.Edge == DockEdge.Right, _headerPx);
+            _marks?.Layout(rc);
         }
         finally
         {

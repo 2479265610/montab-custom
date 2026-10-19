@@ -61,7 +61,7 @@ internal sealed unsafe class Renderer : IDisposable
     // Кеш на текущий DPI
     uint _dpi;
     HFONT _font;
-    int _iconSize, _pad, _gripDot, _gripGap, _header, _thinBorder, _thickBorder, _corner;
+    int _iconSize, _pad, _gripDot, _gripGap, _header, _thinBorder, _thickBorder;
 
     // Кеш backbuffer'а на текущий размер клиентской области
     HDC _memDc;
@@ -280,40 +280,6 @@ internal sealed unsafe class Renderer : IDisposable
     }
 
     /// <summary>
-    /// «Ручка» перетаскивания в правом нижнем углу карточки: две обратные косые,
-    /// которые вместе с прямым углом читаются как треугольник-зацепка.
-    /// Живёт в полоске под превью — DWM рисует миниатюру поверх GDI,
-    /// на самом превью её было бы не видно.
-    /// </summary>
-    void DrawCornerGrip(LayoutItem li, bool hover, bool dragged, bool locked)
-    {
-        if (li.IsStrip)
-            return;
-
-        var foot = new RECT
-        {
-            left = li.Bounds.left + 1,
-            top = li.Preview.bottom,
-            right = li.Bounds.right - 1,
-            bottom = li.Bounds.bottom - 1,
-        };
-        PInvoke.FillRect(_memDc, in foot, dragged ? _dragFillBrush : _stripBrush);
-
-        var grip = LayoutEngine.GripRect(li.Bounds, _corner);
-        if (hover || dragged)
-            PInvoke.FillRect(_memDc, in grip, _stripActiveBrush);
-
-        PInvoke.SetTextColor(_memDc, locked ? _gripLockedColor
-            : hover || dragged ? _textColor : _textDimColor);
-        fixed (char* g = "\\\\")
-        {
-            PInvoke.DrawText(_memDc, g, 2, &grip,
-                DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
-                DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
-        }
-    }
-
-    /// <summary>
     /// Цельная рамка вокруг блока «заголовок + превью». Рисуется наружу от
     /// bounds: внутри рисовать нельзя — DWM компонует превью поверх нашего GDI.
     /// </summary>
@@ -337,11 +303,6 @@ internal sealed unsafe class Renderer : IDisposable
     {
         RECT r = li.Label;
         PInvoke.FillRect(_memDc, in r, isDragged ? _dragFillBrush : isActive ? _stripActiveBrush : _stripBrush);
-
-        // «Ручка» перетаскивания: две обратные косые в правом нижнем углу карточки.
-        // При заблокированном порядке она гаснет — видно и ручку, и то, что
-        // сортировка сейчас выключена.
-        DrawCornerGrip(li, gripHover, isDragged, locked);
 
         int iconX = r.left + _pad;
         int iconY = r.top + (r.bottom - r.top - _iconSize) / 2;
@@ -391,7 +352,6 @@ internal sealed unsafe class Renderer : IDisposable
         _header = LayoutEngine.Scale(LayoutEngine.HeaderLogical, dpi);
         _thinBorder = LayoutEngine.Scale(1, dpi);
         _thickBorder = LayoutEngine.Scale(2, dpi);
-        _corner = LayoutEngine.Scale(LayoutEngine.CornerLogical, dpi);
 
         if (_font != default)
             PInvoke.DeleteObject((HGDIOBJ)_font.Value);
