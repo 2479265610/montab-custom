@@ -92,10 +92,11 @@ internal sealed class LayoutEngine
                 int previewHeight = Math.Clamp(
                     (int)Math.Round(width / aspect), _minPreview, (int)(width * MaxPreviewHeightFactor));
 
-                // Заголовок сверху, превью под ним
+                // Превью сверху, подпись снизу: «ручка» перетаскивания живёт
+                // в подписи, то есть в левом нижнем углу карточки, как и просили.
                 bounds = new RECT { left = left, top = y, right = left + width, bottom = y + _label + previewHeight };
-                label = new RECT { left = left, top = y, right = left + width, bottom = y + _label };
-                preview = new RECT { left = left, top = y + _label, right = left + width, bottom = bounds.bottom };
+                preview = new RECT { left = left, top = y, right = left + width, bottom = y + previewHeight };
+                label = new RECT { left = left, top = y + previewHeight, right = left + width, bottom = bounds.bottom };
             }
 
             _result.Add(new LayoutItem(item, bounds, preview, label, isStrip));
