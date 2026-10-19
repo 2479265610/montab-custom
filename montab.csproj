@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Version>1.2.1</Version>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <!-- C# 15 (preview, ставится вместе с .NET 11 preview SDK) -->
+    <LangVersion>preview</LangVersion>
+    <RootNamespace>Montab</RootNamespace>
+    <AssemblyName>montab</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Иконка exe и трея (генерируется tools/make-icon.ps1 из assets/tray.svg) -->
+    <ApplicationIcon>assets\montab.ico</ApplicationIcon>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TrimMode>full</TrimMode>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <!-- Требуемый минимум — Windows 10 1809+; TFM net10.0-windows задаёт windows7.0 и порождает ложные CA1416 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- Точные версии всех NuGet-зависимостей фиксируются в packages.lock.json -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <!-- Жёсткая обрезка Release-сборки: без стектрейсов, текстов исключений и диагностики -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <StackTraceSupport>false</StackTraceSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <!-- GC: один поток, отдавать память системе агрессивнее -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.321" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.RetainVM" Value="false" />
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+  </ItemGroup>
+
+</Project>

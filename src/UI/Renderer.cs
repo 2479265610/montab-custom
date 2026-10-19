@@ -1,0 +1,226 @@
+using Montab.Core;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.UI.WindowsAndMessaging;
+
+namespace Montab.UI;
+
+/// <summary>
+/// GDI-отрисовка панели. Backbuffer, шрифт и размеры кешируются и
+/// пересоздаются только при изменении размера окна или DPI —
+/// в обычном кадре ничего не выделяется.
+/// </summary>
+internal sealed unsafe class Renderer : IDisposable
+{
+    // COLORREF = 0x00BBGGRR
+    static readonly COLORREF Background = new(0x001C1A1A);      // #1A1A1C
+    static readonly COLORREF StripFill = new(0x00262424);       // #242426
+    static readonly COLORREF StripActiveFill = new(0x00312E2E); // #2E2E31
+    static readonly COLORREF Accent = new(0x00FF840A);          // #0A84FF
+    static readonly COLORREF CloseHover = new(0x002311E8);      // #E81123
+    static readonly COLORREF TextColor = new(0x00F7F2F2);       // #F2F2F7
+    static readonly COLORREF TextDimColor = new(0x00938E8E);    // #8E8E93
+    static readonly COLORREF White = new(0x00FFFFFF);
+
+    readonly HBRUSH _bgBrush = PInvoke.CreateSolidBrush(Background);
+    readonly HBRUSH _stripBrush = PInvoke.CreateSolidBrush(StripFill);
+    readonly HBRUSH _stripActiveBrush = PInvoke.CreateSolidBrush(StripActiveFill);
+    readonly HBRUSH _accentBrush = PInvoke.CreateSolidBrush(Accent);
+    readonly HBRUSH _frameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x003C3A3A));
+    readonly HBRUSH _closeHoverBrush = PInvoke.CreateSolidBrush(CloseHover);
+    readonly HBRUSH _dragFillBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00463C3C));
+    readonly HBRUSH _dragFrameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00938E8E));
+
+    // Кеш на текущий DPI
+    uint _dpi;
+    HFONT _font;
+    int _iconSize, _pad, _gripDot, _gripGap, _header, _thinBorder, _thickBorder;
+
+    // Кеш backbuffer'а на текущий размер клиентской области
+    HDC _memDc;
+    HBITMAP _memBmp;
+    HGDIOBJ _memOldBmp;
+    int _bufWidth, _bufHeight;
+
+    public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
+        WindowItem? hoverClose = null, WindowItem? dragged = null)
+    {
+        SetDpi(dpi);
+
+        HDC hdc = PInvoke.BeginPaint(hwnd, out PAINTSTRUCT ps);
+        try
+        {
+            PInvoke.GetClientRect(hwnd, out RECT client);
+            int width = client.right - client.left;
+            int height = client.bottom - client.top;
+            if (width <= 0 || height <= 0)
+                return;
+
+            EnsureBackbuffer(hdc, width, height);
+            PInvoke.SelectObject(_memDc, (HGDIOBJ)_font.Value);
+
+            PInvoke.FillRect(_memDc, in client, _bgBrush);
+            DrawHeaderGrip(client);
+
+            foreach (var li in layout)
+            {
+                if (li.Bounds.bottom < client.top || li.Bounds.top > client.bottom)
+                    continue;
+
+                bool isActive = li.Window.Hwnd == activeWindow;
+                bool isDragged = li.Window == dragged;
+                if (!li.IsStrip)
+                    DrawOutline(li.Bounds, isActive ? _accentBrush : _frameBrush, isActive ? _thickBorder : _thinBorder);
+                if (isDragged)
+                    DrawOutline(li.Bounds, _dragFrameBrush, _thickBorder);
+                DrawLabel(li, isActive, li.Window == hoverClose, isDragged);
+            }
+
+            PInvoke.BitBlt(hdc, 0, 0, width, height, _memDc, 0, 0, ROP_CODE.SRCCOPY);
+        }
+        finally
+        {
+            PInvoke.EndPaint(hwnd, in ps);
+        }
+    }
+
+    /// <summary>Гриппер-«ручка» сверху: за неё панель перетаскивают на другой монитор/край.</summary>
+    void DrawHeaderGrip(RECT client)
+    {
+        int centerX = (client.left + client.right) / 2;
+        int y = (_header - _gripDot) / 2;
+
+        for (int i = -2; i <= 2; i++)
+        {
+            int x = centerX + i * _gripGap - _gripDot / 2;
+            var r = new RECT { left = x, top = y, right = x + _gripDot, bottom = y + _gripDot };
+            PInvoke.FillRect(_memDc, in r, _frameBrush);
+        }
+    }
+
+    /// <summary>
+    /// Цельная рамка вокруг блока «заголовок + превью». Рисуется наружу от
+    /// bounds: внутри рисовать нельзя — DWM компонует превью поверх нашего GDI.
+    /// </summary>
+    void DrawOutline(RECT bounds, HBRUSH brush, int border)
+    {
+        var frame = new RECT
+        {
+            left = bounds.left - border,
+            top = bounds.top - border,
+            right = bounds.right + border,
+            bottom = bounds.bottom + border,
+        };
+        for (int i = 0; i < border; i++)
+        {
+            PInvoke.FrameRect(_memDc, in frame, brush);
+            frame.left++; frame.top++; frame.right--; frame.bottom--;
+        }
+    }
+
+    void DrawLabel(LayoutItem li, bool isActive, bool closeHover, bool isDragged)
+    {
+        RECT r = li.Label;
+        PInvoke.FillRect(_memDc, in r, isDragged ? _dragFillBrush : isActive ? _stripActiveBrush : _stripBrush);
+
+        int iconX = r.left + _pad;
+        int iconY = r.top + (r.bottom - r.top - _iconSize) / 2;
+        if (li.Window.Icon != default)
+            PInvoke.DrawIconEx(_memDc, iconX, iconY, li.Window.Icon, _iconSize, _iconSize, 0, default, DI_FLAGS.DI_NORMAL);
+
+        var close = LayoutEngine.CloseRect(r);
+
+        PInvoke.SetTextColor(_memDc, li.IsStrip ? TextDimColor : TextColor);
+        var textRect = new RECT
+        {
+            left = iconX + _iconSize + _pad,
+            top = r.top,
+            right = close.left - _pad,
+            bottom = r.bottom,
+        };
+        string title = li.Window.Title;
+        fixed (char* p = title)
+        {
+            PInvoke.DrawText(_memDc, p, title.Length, &textRect,
+                DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
+                DRAW_TEXT_FORMAT.DT_END_ELLIPSIS | DRAW_TEXT_FORMAT.DT_NOPREFIX);
+        }
+
+        // Крестик закрытия приложения
+        if (closeHover)
+            PInvoke.FillRect(_memDc, in close, _closeHoverBrush);
+        PInvoke.SetTextColor(_memDc, closeHover ? White : TextDimColor);
+        fixed (char* x = "✕")
+        {
+            PInvoke.DrawText(_memDc, x, 1, &close,
+                DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
+                DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
+        }
+    }
+
+    void SetDpi(uint dpi)
+    {
+        if (dpi == _dpi)
+            return;
+        _dpi = dpi;
+
+        _iconSize = LayoutEngine.Scale(16, dpi);
+        _pad = LayoutEngine.Scale(7, dpi);
+        _gripDot = Math.Max(2, LayoutEngine.Scale(2, dpi));
+        _gripGap = LayoutEngine.Scale(7, dpi);
+        _header = LayoutEngine.Scale(LayoutEngine.HeaderLogical, dpi);
+        _thinBorder = LayoutEngine.Scale(1, dpi);
+        _thickBorder = LayoutEngine.Scale(2, dpi);
+
+        if (_font != default)
+            PInvoke.DeleteObject((HGDIOBJ)_font.Value);
+        _font = PInvoke.CreateFont(
+            -LayoutEngine.Scale(11, dpi), 0, 0, 0,
+            400 /* FW_NORMAL */, 0, 0, 0,
+            FONT_CHARSET.DEFAULT_CHARSET,
+            FONT_OUTPUT_PRECISION.OUT_DEFAULT_PRECIS,
+            FONT_CLIP_PRECISION.CLIP_DEFAULT_PRECIS,
+            FONT_QUALITY.CLEARTYPE_QUALITY,
+            0, "Microsoft YaHei UI");
+    }
+
+    void EnsureBackbuffer(HDC hdc, int width, int height)
+    {
+        if (_memDc != default && width == _bufWidth && height == _bufHeight)
+            return;
+
+        DisposeBackbuffer();
+        _memDc = PInvoke.CreateCompatibleDC(hdc);
+        _memBmp = PInvoke.CreateCompatibleBitmap(hdc, width, height);
+        _memOldBmp = PInvoke.SelectObject(_memDc, (HGDIOBJ)_memBmp.Value);
+        PInvoke.SetBkMode(_memDc, BACKGROUND_MODE.TRANSPARENT);
+        _bufWidth = width;
+        _bufHeight = height;
+    }
+
+    void DisposeBackbuffer()
+    {
+        if (_memDc == default)
+            return;
+        PInvoke.SelectObject(_memDc, _memOldBmp);
+        PInvoke.DeleteObject((HGDIOBJ)_memBmp.Value);
+        PInvoke.DeleteDC(_memDc);
+        _memDc = default;
+    }
+
+    public void Dispose()
+    {
+        DisposeBackbuffer();
+        PInvoke.DeleteObject((HGDIOBJ)_bgBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripActiveBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_accentBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_frameBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_closeHoverBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_dragFillBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_dragFrameBrush.Value);
+        if (_font != default)
+            PInvoke.DeleteObject((HGDIOBJ)_font.Value);
+    }
+}

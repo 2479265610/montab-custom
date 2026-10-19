@@ -1,0 +1,453 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Dwm;
+using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.UI.Accessibility;
+using Windows.Win32.UI.WindowsAndMessaging;
+
+namespace Montab.Core;
+
+/// <summary>
+/// Ведёт список окон верхнего уровня без поллинга: стартовый EnumWindows
+/// с alt-tab-фильтром, дальше только WinEvent-хуки (out-of-context —
+/// колбэки приходят в наш поток через message loop).
+/// </summary>
+internal sealed unsafe class WindowTracker : IDisposable
+{
+    static WindowTracker? s_instance;
+    static readonly List<HWND> s_enumScratch = [];
+
+    readonly List<WindowItem> _items = [];
+    readonly Dictionary<HWND, WindowItem> _byHwnd = [];
+    readonly List<HWINEVENTHOOK> _hooks = [];
+
+    public IReadOnlyList<WindowItem> Items => _items;
+    public HWND ForegroundWindow { get; private set; }
+
+    /// <summary>Что-то в списке/состоянии изменилось — нужен relayout+repaint.</summary>
+    public event Action? Changed;
+
+    /// <summary>Сменилось foreground-окно (для истории переключений).</summary>
+    public event Action<HWND>? ForegroundChanged;
+
+    public void Start()
+    {
+        s_instance = this;
+
+        Hook(PInvoke.EVENT_SYSTEM_FOREGROUND, PInvoke.EVENT_SYSTEM_FOREGROUND);
+        Hook(PInvoke.EVENT_SYSTEM_MINIMIZESTART, PInvoke.EVENT_SYSTEM_MINIMIZEEND);
+        // 0x8001..0x8003: DESTROY, SHOW, HIDE одним диапазоном
+        Hook(PInvoke.EVENT_OBJECT_DESTROY, PInvoke.EVENT_OBJECT_HIDE);
+        Hook(PInvoke.EVENT_OBJECT_NAMECHANGE, PInvoke.EVENT_OBJECT_NAMECHANGE);
+        // 0x8017..0x8018: CLOAKED, UNCLOAKED (UWP, виртуальные рабочие столы)
+        Hook(PInvoke.EVENT_OBJECT_CLOAKED, PInvoke.EVENT_OBJECT_UNCLOAKED);
+        // Ресайз источника меняет аспект тайла
+        Hook(PInvoke.EVENT_OBJECT_LOCATIONCHANGE, PInvoke.EVENT_OBJECT_LOCATIONCHANGE);
+
+        s_enumScratch.Clear();
+        PInvoke.EnumWindows(&EnumWindowsProc, default);
+        // EnumWindows идёт сверху z-order («новые сверху»); лента двухсекционная:
+        // живые превью вверху, свёрнутые полоски внизу.
+        var strips = new List<WindowItem>();
+        foreach (var hwnd in s_enumScratch)
+        {
+            if (!IsAppWindow(hwnd))
+                continue;
+            var item = CreateItem(hwnd);
+            if (item.IsMinimized)
+                strips.Add(item);
+            else
+                _items.Add(item);
+        }
+        _items.AddRange(strips);
+        foreach (var item in _items)
+            _byHwnd[item.Hwnd] = item;
+
+        ForegroundWindow = PInvoke.GetForegroundWindow();
+        Changed?.Invoke();
+    }
+
+    void Hook(uint eventMin, uint eventMax)
+    {
+        var hook = PInvoke.SetWinEventHook(
+            eventMin, eventMax, default, &WinEventProc, 0, 0,
+            PInvoke.WINEVENT_OUTOFCONTEXT | PInvoke.WINEVENT_SKIPOWNPROCESS);
+        if (hook != default)
+            _hooks.Add(hook);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    static BOOL EnumWindowsProc(HWND hwnd, LPARAM lParam)
+    {
+        s_enumScratch.Add(hwnd);
+        return true;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    static void WinEventProc(
+        HWINEVENTHOOK hook, uint ev, HWND hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        try
+        {
+            s_instance?.OnWinEvent(ev, hwnd, idObject, idChild);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"WinEventProc exception: {ex}");
+        }
+    }
+
+    void OnWinEvent(uint ev, HWND hwnd, int idObject, int idChild)
+    {
+        // Только сами окна (OBJID_WINDOW == 0), не дочерние объекты accessibility.
+        if (idObject != 0 || idChild != 0 || hwnd == default)
+            return;
+
+        switch (ev)
+        {
+            case PInvoke.EVENT_SYSTEM_FOREGROUND:
+                // DeleteTab обычно зовут уже после показа окна, а события на это нет —
+                // перепроверяем, когда окно выходит на передний план.
+                if (_byHwnd.ContainsKey(hwnd) && IsTaskbarDeleted(hwnd))
+                    Remove(hwnd);
+                if (ForegroundWindow != hwnd)
+                {
+                    ForegroundWindow = hwnd;
+                    ForegroundChanged?.Invoke(hwnd);
+                    Changed?.Invoke();
+                }
+                break;
+
+            case PInvoke.EVENT_OBJECT_SHOW:
+            case PInvoke.EVENT_OBJECT_UNCLOAKED:
+                TryAdd(hwnd);
+                break;
+
+            case PInvoke.EVENT_OBJECT_NAMECHANGE:
+                if (_byHwnd.TryGetValue(hwnd, out var tracked))
+                {
+                    string title = GetWindowText(hwnd);
+                    if (title.Length > 0 && title != tracked.Title)
+                    {
+                        tracked.Title = title;
+                        Changed?.Invoke();
+                    }
+                }
+                else
+                {
+                    // Многие приложения ставят заголовок уже после показа окна —
+                    // только теперь оно проходит фильтр.
+                    TryAdd(hwnd);
+                }
+                break;
+
+            case PInvoke.EVENT_OBJECT_HIDE:
+            case PInvoke.EVENT_OBJECT_DESTROY:
+            case PInvoke.EVENT_OBJECT_CLOAKED:
+                Remove(hwnd);
+                break;
+
+            case PInvoke.EVENT_SYSTEM_MINIMIZESTART:
+                SetMinimized(hwnd, true);
+                break;
+
+            case PInvoke.EVENT_SYSTEM_MINIMIZEEND:
+                SetMinimized(hwnd, false);
+                break;
+
+            case PInvoke.EVENT_OBJECT_LOCATIONCHANGE:
+                if (_byHwnd.TryGetValue(hwnd, out var moved) && !moved.IsMinimized)
+                {
+                    // Перетаскивание окна между мониторами переносит его тайл в другую панель
+                    bool dirty = UpdateAspect(moved);
+                    dirty |= UpdateMonitor(moved);
+                    if (dirty)
+                        Changed?.Invoke();
+                }
+                break;
+        }
+    }
+
+    /// <summary>Ручное перемещение элемента (drag-reorder).</summary>
+    public void Move(WindowItem item, int newIndex)
+    {
+        int oldIndex = _items.IndexOf(item);
+        if (oldIndex < 0)
+            return;
+        newIndex = Math.Clamp(newIndex, 0, _items.Count - 1);
+        if (newIndex == oldIndex)
+            return;
+
+        _items.RemoveAt(oldIndex);
+        _items.Insert(newIndex, item);
+        Changed?.Invoke();
+    }
+
+    public int IndexOf(WindowItem item) => _items.IndexOf(item);
+
+    void TryAdd(HWND hwnd)
+    {
+        if (_byHwnd.ContainsKey(hwnd) || !IsAppWindow(hwnd))
+            return;
+
+        var item = CreateItem(hwnd);
+        // Новые живые — сверху; новые свёрнутые — первыми среди полосок
+        _items.Insert(item.IsMinimized ? StripBoundary() : 0, item);
+        _byHwnd[hwnd] = item;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Индекс первой полоски — граница секций «живые/свёрнутые».</summary>
+    int StripBoundary()
+    {
+        for (int i = 0; i < _items.Count; i++)
+        {
+            if (_items[i].IsMinimized)
+                return i;
+        }
+        return _items.Count;
+    }
+
+    /// <summary>
+    /// После смены состояния элемент встаёт на границу секций: свернувшийся —
+    /// первым среди полосок, развернувшийся — последним среди активных.
+    /// </summary>
+    void Reposition(WindowItem item)
+    {
+        if (!_items.Remove(item))
+            return;
+        _items.Insert(StripBoundary(), item);
+    }
+
+    public bool TryGet(HWND hwnd, out WindowItem item) => _byHwnd.TryGetValue(hwnd, out item!);
+
+    void Remove(HWND hwnd)
+    {
+        if (!_byHwnd.Remove(hwnd, out var item))
+            return;
+
+        _items.Remove(item);
+        DestroyOwnedIcon(item);
+        Changed?.Invoke();
+    }
+
+    void SetMinimized(HWND hwnd, bool minimized)
+    {
+        if (_byHwnd.TryGetValue(hwnd, out var item) && item.IsMinimized != minimized)
+        {
+            item.IsMinimized = minimized;
+            if (!minimized)
+            {
+                UpdateAspect(item); // к MINIMIZEEND окно уже в финальной геометрии
+                UpdateMonitor(item);
+            }
+            Reposition(item);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>Пересчёт мониторов всех окон — после смены конфигурации дисплеев.</summary>
+    public void RefreshMonitors()
+    {
+        bool dirty = false;
+        foreach (var item in _items)
+            dirty |= UpdateMonitor(item);
+        if (dirty)
+            Changed?.Invoke();
+    }
+
+    static WindowItem CreateItem(HWND hwnd)
+    {
+        var icon = IconLoader.GetWindowIcon(hwnd, out bool owned);
+        var item = new WindowItem
+        {
+            Hwnd = hwnd,
+            Title = GetWindowText(hwnd),
+            Icon = icon,
+            OwnsIcon = owned,
+            IsMinimized = PInvoke.IsIconic(hwnd),
+        };
+        UpdateAspect(item);
+        UpdateMonitor(item);
+        return item;
+    }
+
+    /// <summary>true — окно переехало на другой монитор.</summary>
+    static bool UpdateMonitor(WindowItem item)
+    {
+        var monitor = MonitorOf(item.Hwnd);
+        if (monitor == item.Monitor)
+            return false;
+        item.Monitor = monitor;
+        return true;
+    }
+
+    static HMONITOR MonitorOf(HWND hwnd)
+    {
+        // Свёрнутое окно физически уезжает в (-32000,-32000): его монитор —
+        // тот, где окно развернётся обратно (rcNormalPosition).
+        if (PInvoke.IsIconic(hwnd))
+        {
+            var placement = new WINDOWPLACEMENT { length = (uint)sizeof(WINDOWPLACEMENT) };
+            if (PInvoke.GetWindowPlacement(hwnd, ref placement))
+                return PInvoke.MonitorFromRect(in placement.rcNormalPosition, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        }
+
+        return PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+    }
+
+    /// <summary>true — аспект источника ощутимо изменился.</summary>
+    static bool UpdateAspect(WindowItem item)
+    {
+        // У свёрнутого окна клиентская область — «иконик»-полоса ~160×28
+        if (PInvoke.IsIconic(item.Hwnd))
+            return false;
+        if (!PInvoke.GetClientRect(item.Hwnd, out RECT rc))
+            return false;
+        int w = rc.right - rc.left, h = rc.bottom - rc.top;
+        if (w <= 0 || h <= 0)
+            return false;
+
+        double aspect = (double)w / h;
+        // Переходная геометрия разворачивания даёт дикие пропорции — игнорируем
+        if (aspect is < 0.2 or > 4.5)
+            return false;
+        if (Math.Abs(aspect - item.Aspect) < 0.01)
+            return false;
+
+        item.Aspect = aspect;
+        return true;
+    }
+
+    /// <summary>Классический alt-tab-фильтр + отсев cloaked-окон и всплывающих уведомлений.</summary>
+    static bool IsAppWindow(HWND hwnd)
+    {
+        if (!PInvoke.IsWindowVisible(hwnd))
+            return false;
+        if (PInvoke.GetWindowTextLength(hwnd) == 0)
+            return false;
+
+        var exStyle = (WINDOW_EX_STYLE)unchecked((uint)PInvoke.GetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE));
+        if ((exStyle & WINDOW_EX_STYLE.WS_EX_TOOLWINDOW) != 0 && (exStyle & WINDOW_EX_STYLE.WS_EX_APPWINDOW) == 0)
+            return false;
+
+        if (IsNotification(hwnd, exStyle))
+            return false;
+        if (IsTaskbarDeleted(hwnd) || IsShellCoreWindow(hwnd))
+            return false;
+
+        // Правило alt-tab (Raymond Chen): у owned-цепочки показывается корневой владелец.
+        if ((exStyle & WINDOW_EX_STYLE.WS_EX_APPWINDOW) == 0)
+        {
+            HWND walk = default;
+            HWND probe = PInvoke.GetAncestor(hwnd, GET_ANCESTOR_FLAGS.GA_ROOTOWNER);
+            while (probe != walk)
+            {
+                walk = probe;
+                probe = PInvoke.GetLastActivePopup(walk);
+                if (PInvoke.IsWindowVisible(probe))
+                    break;
+            }
+            if (walk != hwnd)
+                return false;
+        }
+
+        // Cloaked: suspended UWP, окна других виртуальных рабочих столов.
+        int cloaked = 0;
+        PInvoke.DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_CLOAKED, &cloaked, sizeof(int));
+        return cloaked == 0;
+    }
+
+    /// <summary>
+    /// Окно убрано из таскбара через ITaskbarList::DeleteTab: shell помечает его
+    /// недокументированным window prop и по нему же прячет из Alt+Tab. Стилями
+    /// это не читается (пример — всплывающее WPF-окно КОМПАС-3D).
+    /// </summary>
+    static bool IsTaskbarDeleted(HWND hwnd) => PInvoke.GetProp(hwnd, "ITaskList_Deleted") != default;
+
+    /// <summary>
+    /// «Голый» CoreWindow — shell-инфраструктура (Пуск, поиск, панель ввода):
+    /// попадал в ленту по UNCLOAKED в момент открытия. UWP-приложения представлены
+    /// хостом ApplicationFrameWindow, так что класс отсекается целиком.
+    /// </summary>
+    static bool IsShellCoreWindow(HWND hwnd)
+    {
+        Span<char> buffer = stackalloc char[64];
+        fixed (char* p = buffer)
+        {
+            int length = PInvoke.GetClassName(hwnd, p, buffer.Length);
+            return length > 0 && buffer[..length].SequenceEqual("Windows.UI.Core.CoreWindow");
+        }
+    }
+
+    /// <summary>
+    /// Всплывающее уведомление (тост, баннер мессенджера, OSD), а не рабочее окно.
+    /// Признаки нарочно консервативные — потерять настоящее окно хуже лишнего таба:
+    /// либо окно принципиально не активируется, либо у него нет ни рамки, ни кнопок,
+    /// ни заголовка с системным меню, И оно заметно меньше монитора (иначе это
+    /// безрамочное полноэкранное окно — игры и плееры делают именно такие).
+    /// </summary>
+    static bool IsNotification(HWND hwnd, WINDOW_EX_STYLE exStyle)
+    {
+        if ((exStyle & WINDOW_EX_STYLE.WS_EX_NOACTIVATE) != 0)
+            return true;
+
+        var style = (WINDOW_STYLE)unchecked((uint)PInvoke.GetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE));
+        const WINDOW_STYLE frameBits =
+            WINDOW_STYLE.WS_THICKFRAME | WINDOW_STYLE.WS_MINIMIZEBOX | WINDOW_STYLE.WS_MAXIMIZEBOX |
+            WINDOW_STYLE.WS_SYSMENU;
+        if ((style & frameBits) != 0 || (style & WINDOW_STYLE.WS_CAPTION) == WINDOW_STYLE.WS_CAPTION)
+            return false;
+
+        return IsSmallerThanHalfMonitor(hwnd);
+    }
+
+    static bool IsSmallerThanHalfMonitor(HWND hwnd)
+    {
+        if (!PInvoke.GetWindowRect(hwnd, out RECT rc))
+            return false;
+
+        var monitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        var mi = new MONITORINFO { cbSize = (uint)sizeof(MONITORINFO) };
+        if (!PInvoke.GetMonitorInfo(monitor, ref mi))
+            return false;
+
+        return (rc.right - rc.left) * 2 < mi.rcMonitor.right - mi.rcMonitor.left
+            && (rc.bottom - rc.top) * 2 < mi.rcMonitor.bottom - mi.rcMonitor.top;
+    }
+
+    static string GetWindowText(HWND hwnd)
+    {
+        Span<char> buffer = stackalloc char[512];
+        fixed (char* p = buffer)
+        {
+            int length = PInvoke.GetWindowText(hwnd, p, buffer.Length);
+            return length > 0 ? new string(buffer[..length]) : "";
+        }
+    }
+
+    static void DestroyOwnedIcon(WindowItem item)
+    {
+        if (item.OwnsIcon && item.Icon != default)
+        {
+            PInvoke.DestroyIcon(item.Icon);
+            item.Icon = default;
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var hook in _hooks)
+            PInvoke.UnhookWinEvent(hook);
+        _hooks.Clear();
+
+        foreach (var item in _items)
+            DestroyOwnedIcon(item);
+
+        if (s_instance == this)
+            s_instance = null;
+    }
+}
