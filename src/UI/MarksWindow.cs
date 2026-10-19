@@ -101,11 +101,12 @@ internal sealed unsafe class MarksWindow
         // Порядок зафиксирован — ручек не рисуем вовсе
         if (!locked)
         {
-            int length = LayoutEngine.Scale(17, dpi);
-            int gap = LayoutEngine.Scale(4, dpi);
+            int length = LayoutEngine.Scale(10, dpi);
+            int gap = LayoutEngine.Scale(3, dpi);
             int inset = LayoutEngine.Scale(2, dpi);
-            int thick = Math.Max(1, LayoutEngine.Scale(1, dpi));
-            uint basePixel = dark ? 0xFF737378 : 0xFFA8A8AE;
+            int thick = Math.Max(2, LayoutEngine.Scale(2, dpi));
+            // Чёрные на светлом, белые на тёмном — по-настоящему контрастные
+            uint basePixel = dark ? 0xFFF2F2F2 : 0xFF000000;
             uint hotPixel = 0xFFFF840A; // #0A84FF в BGRA
 
             foreach (var li in layout)
@@ -117,7 +118,7 @@ internal sealed unsafe class MarksWindow
 
                 int x = li.Bounds.left + inset;
                 int y = li.Bounds.bottom - inset;
-                int len = Math.Min(length, Math.Max(6, (li.Bounds.right - li.Bounds.left) / 5));
+                int len = Math.Min(length, Math.Max(5, (li.Bounds.right - li.Bounds.left) / 6));
                 uint pixel = li.Window == active ? hotPixel : basePixel;
 
                 // Верхняя косая: от левого края вниз к нижнему — вместе с углом треугольник
