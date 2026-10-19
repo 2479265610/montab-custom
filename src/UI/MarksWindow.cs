@@ -229,6 +229,7 @@ internal sealed unsafe class MarksWindow
         _surfaceHeight = 0;
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     static LRESULT StaticWndProc(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam)
     {
         try
