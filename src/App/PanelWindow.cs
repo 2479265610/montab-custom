@@ -221,19 +221,18 @@ internal sealed unsafe class PanelWindow
         int alpha = _host.Settings.GlassAlpha;
         bool on = alpha > 0;
 
-        var ex = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        nint ex = PInvoke.GetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        nint layered = (nint)(uint)WINDOW_EX_STYLE.WS_EX_LAYERED;
         if (on)
         {
-            PInvoke.SetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
-                (int)(ex | WINDOW_EX_STYLE.WS_EX_LAYERED));
+            PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, ex | layered);
             byte a = (byte)Math.Clamp(255 * alpha / 100, 40, 255);
-            PInvoke.SetLayeredWindowAttributes(_hwnd, default, a,
+            PInvoke.SetLayeredWindowAttributes(_hwnd, new COLORREF(0), a,
                 LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA);
         }
         else
         {
-            PInvoke.SetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
-                (int)(ex & ~WINDOW_EX_STYLE.WS_EX_LAYERED));
+            PInvoke.SetWindowLongPtr(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, ex & ~layered);
         }
 
         PInvoke.InvalidateRect(_hwnd, null, true);
