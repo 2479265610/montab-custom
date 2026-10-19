@@ -23,7 +23,7 @@ namespace Montab.UI;
 internal sealed unsafe class ScrollBarWindow
 {
     const string ClassName = "montab.scrollbar";
-    const int WidthLogical = 14;
+    const int WidthLogical = 6;
     const int MinThumbLogical = 24;
 
     // Классический полупрозрачный серый бегунок; «серость» сокращена точечно:

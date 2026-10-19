@@ -9,6 +9,13 @@ internal enum DockEdge
     Right,
 }
 
+/// <summary>Оформление панели.</summary>
+internal enum ThemeMode
+{
+    Light,
+    Dark,
+}
+
 /// <summary>Панель одного монитора: сторона, ширина, показывать ли её вообще.</summary>
 internal sealed class MonitorSettings
 {
@@ -40,6 +47,9 @@ internal sealed class Settings
     /// 1–100 — сила затемнения подложки. Размытие задаётся системой и не регулируется.
     /// </summary>
     public int GlassAlpha { get; set; } = 0;
+
+    /// <summary>Светлое или тёмное оформление панели.</summary>
+    public ThemeMode Theme { get; set; } = ThemeMode.Light;
 
     /// <summary>Настройки монитора; отсутствующие заводятся на лету по образцу первой панели.</summary>
     public MonitorSettings For(string device)

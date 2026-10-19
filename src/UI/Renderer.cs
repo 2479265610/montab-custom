@@ -14,23 +14,47 @@ namespace Montab.UI;
 internal sealed unsafe class Renderer : IDisposable
 {
     // COLORREF = 0x00BBGGRR
-    static readonly COLORREF Background = new(0x00F7F5F5);      // #F5F5F7
-    static readonly COLORREF StripFill = new(0x00FFFFFF);       // #FFFFFF
-    static readonly COLORREF StripActiveFill = new(0x00EDE8E8); // #E8E8ED
-    static readonly COLORREF Accent = new(0x00FF840A);          // #0A84FF
-    static readonly COLORREF CloseHover = new(0x002311E8);      // #E81123
-    static readonly COLORREF TextColor = new(0x001E1C1C);       // #1C1C1E
-    static readonly COLORREF TextDimColor = new(0x00736E6E);    // #6E6E73
+    // Светлая тема
+    static readonly COLORREF L_Bg = new(0x00F7F5F5);         // #F5F5F7
+    static readonly COLORREF L_Strip = new(0x00FFFFFF);      // #FFFFFF
+    static readonly COLORREF L_StripActive = new(0x00EDE8E8); // #E8E8ED
+    static readonly COLORREF L_Text = new(0x001E1C1C);       // #1C1C1E
+    static readonly COLORREF L_TextDim = new(0x00736E6E);    // #6E6E73
+    static readonly COLORREF L_Frame = new(0x00DBD6D6);      // #D6D6DB
+    static readonly COLORREF L_DragFill = new(0x00E5E0E0);   // #E0E0E5
+
+    // Тёмная тема
+    static readonly COLORREF D_Bg = new(0x001C1A1A);         // #1A1A1C
+    static readonly COLORREF D_Strip = new(0x00262424);      // #242426
+    static readonly COLORREF D_StripActive = new(0x00312E2E); // #2E2E31
+    static readonly COLORREF D_Text = new(0x00F7F2F2);       // #F2F2F7
+    static readonly COLORREF D_TextDim = new(0x00938E8E);    // #8E8E93
+    static readonly COLORREF D_Frame = new(0x003C3A3A);      // #3A3A3C
+    static readonly COLORREF D_DragFill = new(0x00463C3C);   // #3C3C46
+
+    // Общие для обеих тем
+    static readonly COLORREF Accent = new(0x00FF840A);       // #0A84FF
+    static readonly COLORREF CloseHover = new(0x002311E8);   // #E81123
     static readonly COLORREF White = new(0x00FFFFFF);
 
-    readonly HBRUSH _bgBrush = PInvoke.CreateSolidBrush(Background);
-    readonly HBRUSH _stripBrush = PInvoke.CreateSolidBrush(StripFill);
-    readonly HBRUSH _stripActiveBrush = PInvoke.CreateSolidBrush(StripActiveFill);
+    readonly HBRUSH _bgLight = PInvoke.CreateSolidBrush(L_Bg);
+    readonly HBRUSH _bgDark = PInvoke.CreateSolidBrush(D_Bg);
+    readonly HBRUSH _stripLight = PInvoke.CreateSolidBrush(L_Strip);
+    readonly HBRUSH _stripDark = PInvoke.CreateSolidBrush(D_Strip);
+    readonly HBRUSH _stripActiveLight = PInvoke.CreateSolidBrush(L_StripActive);
+    readonly HBRUSH _stripActiveDark = PInvoke.CreateSolidBrush(D_StripActive);
     readonly HBRUSH _accentBrush = PInvoke.CreateSolidBrush(Accent);
-    readonly HBRUSH _frameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00DBD6D6));
     readonly HBRUSH _closeHoverBrush = PInvoke.CreateSolidBrush(CloseHover);
-    readonly HBRUSH _dragFillBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00E5E0E0));
+    readonly HBRUSH _frameLight = PInvoke.CreateSolidBrush(L_Frame);
+    readonly HBRUSH _frameDark = PInvoke.CreateSolidBrush(D_Frame);
+    readonly HBRUSH _dragFillLight = PInvoke.CreateSolidBrush(L_DragFill);
+    readonly HBRUSH _dragFillDark = PInvoke.CreateSolidBrush(D_DragFill);
     readonly HBRUSH _dragFrameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00938E8E));
+
+    // Текущий набор (переключается через SetDark)
+    bool _dark;
+    HBRUSH _bgBrush, _stripBrush, _stripActiveBrush, _frameBrush, _dragFillBrush;
+    COLORREF _textColor, _textDimColor;
 
     // Кеш на текущий DPI
     uint _dpi;
@@ -42,6 +66,23 @@ internal sealed unsafe class Renderer : IDisposable
     HBITMAP _memBmp;
     HGDIOBJ _memOldBmp;
     int _bufWidth, _bufHeight;
+
+    public Renderer() => ApplyTheme(false);
+
+    /// <summary>Переключает набор кистей и цветов текста между светлой и тёмной темой.</summary>
+    public void ApplyTheme(bool dark)
+    {
+        _dark = dark;
+        _bgBrush = dark ? _bgDark : _bgLight;
+        _stripBrush = dark ? _stripDark : _stripLight;
+        _stripActiveBrush = dark ? _stripActiveDark : _stripActiveLight;
+        _frameBrush = dark ? _frameDark : _frameLight;
+        _dragFillBrush = dark ? _dragFillDark : _dragFillLight;
+        _textColor = dark ? D_Text : L_Text;
+        _textDimColor = dark ? D_TextDim : L_TextDim;
+    }
+
+    public bool IsDark => _dark;
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
         WindowItem? hoverClose = null, WindowItem? dragged = null)
@@ -131,7 +172,7 @@ internal sealed unsafe class Renderer : IDisposable
 
         var close = LayoutEngine.CloseRect(r);
 
-        PInvoke.SetTextColor(_memDc, li.IsStrip ? TextDimColor : TextColor);
+        PInvoke.SetTextColor(_memDc, li.IsStrip ? _textDimColor : _textColor);
         var textRect = new RECT
         {
             left = iconX + _iconSize + _pad,
@@ -150,7 +191,7 @@ internal sealed unsafe class Renderer : IDisposable
         // Крестик закрытия приложения
         if (closeHover)
             PInvoke.FillRect(_memDc, in close, _closeHoverBrush);
-        PInvoke.SetTextColor(_memDc, closeHover ? White : TextDimColor);
+        PInvoke.SetTextColor(_memDc, closeHover ? White : _textDimColor);
         fixed (char* x = "✕")
         {
             PInvoke.DrawText(_memDc, x, 1, &close,
@@ -212,13 +253,18 @@ internal sealed unsafe class Renderer : IDisposable
     public void Dispose()
     {
         DisposeBackbuffer();
-        PInvoke.DeleteObject((HGDIOBJ)_bgBrush.Value);
-        PInvoke.DeleteObject((HGDIOBJ)_stripBrush.Value);
-        PInvoke.DeleteObject((HGDIOBJ)_stripActiveBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_bgLight.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_bgDark.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripLight.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripDark.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripActiveLight.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_stripActiveDark.Value);
         PInvoke.DeleteObject((HGDIOBJ)_accentBrush.Value);
-        PInvoke.DeleteObject((HGDIOBJ)_frameBrush.Value);
         PInvoke.DeleteObject((HGDIOBJ)_closeHoverBrush.Value);
-        PInvoke.DeleteObject((HGDIOBJ)_dragFillBrush.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_frameLight.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_frameDark.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_dragFillLight.Value);
+        PInvoke.DeleteObject((HGDIOBJ)_dragFillDark.Value);
         PInvoke.DeleteObject((HGDIOBJ)_dragFrameBrush.Value);
         if (_font != default)
             PInvoke.DeleteObject((HGDIOBJ)_font.Value);

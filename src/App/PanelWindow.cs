@@ -124,6 +124,8 @@ internal sealed unsafe class PanelWindow
             throw new InvalidOperationException("CreateWindowExW failed");
 
         SetDpi(PInvoke.GetDpiForWindow(_hwnd));
+        _renderer.ApplyTheme(_host.Settings.Theme == ThemeMode.Dark);
+        ApplyGlass();
         _scrollbar = new ScrollBarWindow(this, _hwnd, hInstance);
         _appBar = new AppBar(_hwnd, PInvoke.RegisterWindowMessage("montab.appbar"));
         _appBar.Register();
@@ -197,6 +199,45 @@ internal sealed unsafe class PanelWindow
 
     /// <summary>Настройки панели изменили извне (меню трея) — переразместиться.</summary>
     public void Relayout() => UpdatePosition();
+
+    /// <summary>Применяет текущую тему оформления к панели.</summary>
+    public void ApplyTheme()
+    {
+        if (_hwnd == default)
+            return;
+        _renderer.ApplyTheme(_host.Settings.Theme == ThemeMode.Dark);
+        PInvoke.InvalidateRect(_hwnd, null, true);
+    }
+
+    /// <summary>
+    /// Матовое стекло: панель становится полупрозрачной слоистой поверхностью,
+    /// сквозь неё видно содержимое под ней. Размытие задаёт система.
+    /// </summary>
+    public void ApplyGlass()
+    {
+        if (_hwnd == default)
+            return;
+
+        int alpha = _host.Settings.GlassAlpha;
+        bool on = alpha > 0;
+
+        var ex = (WINDOW_EX_STYLE)PInvoke.GetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        if (on)
+        {
+            PInvoke.SetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
+                (int)(ex | WINDOW_EX_STYLE.WS_EX_LAYERED));
+            byte a = (byte)Math.Clamp(255 * alpha / 100, 40, 255);
+            PInvoke.SetLayeredWindowAttributes(_hwnd, default, a,
+                LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA);
+        }
+        else
+        {
+            PInvoke.SetWindowLong(_hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
+                (int)(ex & ~WINDOW_EX_STYLE.WS_EX_LAYERED));
+        }
+
+        PInvoke.InvalidateRect(_hwnd, null, true);
+    }
 
     public void Invalidate()
     {

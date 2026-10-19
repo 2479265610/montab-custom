@@ -36,6 +36,13 @@ internal sealed unsafe class TrayIcon : IDisposable
     const uint MonitorLeft = 1;
     const uint MonitorRight = 2;
 
+    // Оформление панели
+    const uint CmdThemeLight = 3;
+    const uint CmdThemeDark = 4;
+    const uint CmdGlassOff = 10;
+    const uint CmdGlassBase = 20; // + индекс в GlassSteps
+    static readonly int[] GlassSteps = [30, 50, 70, 85];
+
     static bool s_classRegistered;
 
     readonly PanelHost _host;
@@ -342,6 +349,29 @@ internal sealed unsafe class TrayIcon : IDisposable
             }
 
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
+
+            var look = PInvoke.CreatePopupMenu();
+            if (look != default)
+            {
+                PInvoke.AppendMenu(look, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.Theme == ThemeMode.Light),
+                    CmdThemeLight, "浅色主题");
+                PInvoke.AppendMenu(look, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.Theme == ThemeMode.Dark),
+                    CmdThemeDark, "深色主题");
+                PInvoke.AppendMenu(look, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
+                PInvoke.AppendMenu(look, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.GlassAlpha == 0),
+                    CmdGlassOff, "毛玻璃：关闭");
+                for (int i = 0; i < GlassSteps.Length; i++)
+                {
+                    int value = GlassSteps[i];
+                    PInvoke.AppendMenu(look, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.GlassAlpha == value),
+                        CmdGlassBase + (uint)i, $"毛玻璃：{value}%");
+                }
+
+                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_POPUP,
+                    (nuint)look.Value, "外观");
+            }
+
+            PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
             PInvoke.AppendMenu(menu, Check(MENU_ITEM_FLAGS.MF_STRING, Autostart.IsEnabled()),
                 CmdAutostart, Strings.Autostart);
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CmdExit, Strings.Exit);
@@ -398,6 +428,19 @@ internal sealed unsafe class TrayIcon : IDisposable
                 break;
             case CmdExit:
                 _host.Exit();
+                break;
+            case CmdThemeLight:
+                _host.SetTheme(ThemeMode.Light);
+                break;
+            case CmdThemeDark:
+                _host.SetTheme(ThemeMode.Dark);
+                break;
+            case CmdGlassOff:
+                _host.SetGlass(0);
+                break;
+            default:
+                if (cmd >= CmdGlassBase && cmd < CmdGlassBase + GlassSteps.Length)
+                    _host.SetGlass(GlassSteps[(int)(cmd - CmdGlassBase)]);
                 break;
         }
     }

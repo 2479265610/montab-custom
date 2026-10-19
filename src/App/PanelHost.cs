@@ -163,6 +163,29 @@ internal sealed unsafe class PanelHost
             panel.Relayout();
     }
 
+    /// <summary>Светлое/тёмное оформление — общее для всех панелей.</summary>
+    public void SetTheme(ThemeMode theme)
+    {
+        if (_settings.Theme == theme)
+            return;
+        _settings.Theme = theme;
+        _settings.Save();
+        foreach (var panel in _panels.Values)
+            panel.ApplyTheme();
+    }
+
+    /// <summary>Прозрачность матового стекла: 0 — выключено, 1–100 — плотность.</summary>
+    public void SetGlass(int alpha)
+    {
+        alpha = Math.Clamp(alpha, 0, 100);
+        if (_settings.GlassAlpha == alpha)
+            return;
+        _settings.GlassAlpha = alpha;
+        _settings.Save();
+        foreach (var panel in _panels.Values)
+            panel.ApplyGlass();
+    }
+
     /// <summary>
     /// Панель бросили на другой монитор: если он свободен — переезжаем туда,
     /// у занятого своя панель уже есть, и трогать её незачем.
