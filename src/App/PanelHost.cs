@@ -186,6 +186,15 @@ internal sealed unsafe class PanelHost
             panel.ApplyGlass();
     }
 
+    /// <summary>Меняет настройки поведения и сразу применяет их ко всем панелям.</summary>
+    public void UpdatePreferences(Action<Settings> mutate)
+    {
+        mutate(_settings);
+        _settings.Save();
+        foreach (var panel in _panels.Values)
+            panel.Refresh();
+    }
+
     /// <summary>
     /// Панель бросили на другой монитор: если он свободен — переезжаем туда,
     /// у занятого своя панель уже есть, и трогать её незачем.

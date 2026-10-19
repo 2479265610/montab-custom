@@ -20,17 +20,23 @@ internal sealed class LayoutEngine
     const int GapLogical = 8;
     const int PaddingLogical = 10;
     const int MinPreviewHeightLogical = 48;
+    /// <summary>Высота кнопки «Показать рабочий стол» под ручкой.</summary>
+    const int DesktopBarLogical = 30;
     const double MaxPreviewHeightFactor = 1.6; // не выше 1.6 ширины (очень «портретные» окна)
 
     readonly List<LayoutItem> _result = [];
 
     // Предвычисленные размеры на текущий DPI
     uint _dpi;
-    int _header, _strip, _label, _gap, _padding, _minPreview;
+    int _header, _strip, _label, _gap, _padding, _minPreview, _desktopBar;
 
     public int TotalHeight { get; private set; }
 
-    public IReadOnlyList<LayoutItem> Compute(IReadOnlyList<WindowItem> items, RECT client, uint dpi, int scrollOffset)
+    /// <summary>Область кнопки «Показать рабочий стол» в клиентских координатах.</summary>
+    public RECT DesktopBar { get; private set; }
+
+    public IReadOnlyList<LayoutItem> Compute(IReadOnlyList<WindowItem> items, RECT client, uint dpi,
+        int scrollOffset, bool minimizedAsCard = true)
     {
         SetDpi(dpi);
         _result.Clear();
@@ -40,13 +46,22 @@ internal sealed class LayoutEngine
             return _result;
 
         int left = client.left + _padding;
-        int y = _header + _padding - scrollOffset;
+        int barTop = _header;
+        int barBottom = barTop + _desktopBar;
+        DesktopBar = new RECT
+        {
+            left = left,
+            top = barTop,
+            right = client.right - _padding,
+            bottom = barBottom,
+        };
+        int y = barBottom + _gap - scrollOffset;
 
         foreach (var item in items)
         {
-            // Свёрнутые окна тоже показываем крупной плиткой с превью:
-            // пользователь просил, чтобы минимизация не уменьшала карточку.
-            bool isStrip = false;
+            // Свёрнутые окна показываем крупной плиткой, если так задано в настройках,
+            // иначе — узкой полоской, как в оригинале.
+            bool isStrip = !minimizedAsCard && item.IsMinimized;
             RECT bounds, preview = default, label;
 
             if (isStrip)
@@ -85,6 +100,7 @@ internal sealed class LayoutEngine
         _gap = Scale(GapLogical, dpi);
         _padding = Scale(PaddingLogical, dpi);
         _minPreview = Scale(MinPreviewHeightLogical, dpi);
+        _desktopBar = Scale(DesktopBarLogical, dpi);
     }
 
     /// <summary>

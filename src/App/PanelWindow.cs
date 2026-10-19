@@ -297,16 +297,18 @@ internal sealed unsafe class PanelWindow
 
             case PInvoke.WM_PAINT:
                 PInvoke.GetClientRect(hwnd, out RECT client);
-                _layoutItems = _layout.Compute(CollectMine(), client, _dpi, _scrollOffset);
+                _layoutItems = _layout.Compute(CollectMine(), client, _dpi, _scrollOffset,
+                    _host.Settings.MinimizedAsCard);
                 int maxScroll = Math.Max(0, _layout.TotalHeight - (client.bottom - client.top));
                 if (_scrollOffset > maxScroll)
                 {
                     _scrollOffset = maxScroll;
-                    _layoutItems = _layout.Compute(_mine, client, _dpi, _scrollOffset);
+                    _layoutItems = _layout.Compute(_mine, client, _dpi, _scrollOffset,
+                        _host.Settings.MinimizedAsCard);
                 }
                 _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow);
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
-                    _press == PressState.Dragging ? _pressItem : null);
+                    _press == PressState.Dragging ? _pressItem : null, _layout.DesktopBar);
                 _scrollbar?.Update(_layout.TotalHeight, client.bottom - client.top, _scrollOffset, _pointerNearby);
                 return new LRESULT(0);
 
@@ -416,9 +418,14 @@ internal sealed unsafe class PanelWindow
                         _pendingLabelItem = null;
                         if (!PInvoke.IsWindow(pending.Hwnd))
                             break;
-                        // Клик по уже активному окну убирает его назад, а не переключает
+                        // Клик по уже активному окну: убрать назад или свернуть
                         if (pending.Hwnd == _tracker.ForegroundWindow)
-                            SendToBottom(pending);
+                        {
+                            if (_host.Settings.ActiveClickAction == ActiveClickAction.Minimize)
+                                PInvoke.ShowWindow(pending.Hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);
+                            else
+                                SendToBottom(pending);
+                        }
                         else
                             _switch.Activate(pending.Hwnd);
                     }
@@ -747,7 +754,8 @@ internal sealed unsafe class PanelWindow
             if (_hoverCandidate != item)
             {
                 _hoverCandidate = item;
-                PInvoke.SetTimer(_hwnd, HoverZoomTimerId, HoverZoomDelayMs, null);
+                if (_host.Settings.HoverZoom)
+                    PInvoke.SetTimer(_hwnd, HoverZoomTimerId, HoverZoomDelayMs, null);
             }
         }
         else
@@ -888,8 +896,51 @@ internal sealed unsafe class PanelWindow
         }
     }
 
+    /// <summary>Перерисовать панель после смены настроек поведения.</summary>
+    public void Refresh()
+    {
+        if (_hwnd != default)
+            PInvoke.InvalidateRect(_hwnd, null, true);
+    }
+
+    /// <summary>Сворачивает все обычные окна — «показать рабочий стол».</summary>
+    public void ShowDesktop()
+    {
+        s_self = _hwnd;
+        unsafe
+        {
+            PInvoke.EnumWindows(&MinimizeProc, 0);
+        }
+    }
+
+    static HWND s_self;
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    static BOOL MinimizeProc(HWND hwnd, LPARAM lParam)
+    {
+        _ = lParam;
+        if (hwnd == default || hwnd == s_self)
+            return true;
+        if (!PInvoke.IsWindowVisible(hwnd) || PInvoke.IsIconic(hwnd))
+            return true;
+
+        nint ex = PInvoke.GetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        if ((ex & (nint)(uint)WINDOW_EX_STYLE.WS_EX_TOOLWINDOW) != 0)
+            return true;
+
+        PInvoke.ShowWindow(hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);
+        return true;
+    }
+
     void OnClick(int x, int y, bool ctrl)
     {
+        // Кнопка «Показать рабочий стол» — сворачивает все окна.
+        if (Inside(_layout.DesktopBar, x, y))
+        {
+            ShowDesktop();
+            return;
+        }
+
         if (HitTest(x, y) is not { } li)
             return;
 
@@ -902,7 +953,10 @@ internal sealed unsafe class PanelWindow
             _closeClickTick = Environment.TickCount;
             _closeClickX = x;
             _closeClickY = y;
-            PInvoke.PostMessage(li.Window.Hwnd, PInvoke.WM_CLOSE, default, default);
+            if (_host.Settings.CloseAction == CloseAction.Minimize)
+                PInvoke.ShowWindow(li.Window.Hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);
+            else
+                PInvoke.PostMessage(li.Window.Hwnd, PInvoke.WM_CLOSE, default, default);
             return;
         }
 

@@ -85,7 +85,7 @@ internal sealed unsafe class Renderer : IDisposable
     public bool IsDark => _dark;
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
-        WindowItem? hoverClose = null, WindowItem? dragged = null)
+        WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default)
     {
         SetDpi(dpi);
 
@@ -103,6 +103,8 @@ internal sealed unsafe class Renderer : IDisposable
 
             PInvoke.FillRect(_memDc, in client, _bgBrush);
             DrawHeaderGrip(client);
+            if (desktopBar.bottom > desktopBar.top)
+                DrawDesktopBar(desktopBar);
 
             foreach (var li in layout)
             {
@@ -137,6 +139,31 @@ internal sealed unsafe class Renderer : IDisposable
             int x = centerX + i * _gripGap - _gripDot / 2;
             var r = new RECT { left = x, top = y, right = x + _gripDot, bottom = y + _gripDot };
             PInvoke.FillRect(_memDc, in r, _frameBrush);
+        }
+    }
+
+    /// <summary>Кнопка «Показать рабочий стол»: сворачивает все окна.</summary>
+    void DrawDesktopBar(RECT bar)
+    {
+        PInvoke.FillRect(_memDc, in bar, _stripBrush);
+
+        var frame = bar;
+        for (int i = 0; i < _thinBorder; i++)
+        {
+            PInvoke.FrameRect(_memDc, in frame, _frameBrush);
+            frame.left++;
+            frame.top++;
+            frame.right--;
+            frame.bottom--;
+        }
+
+        PInvoke.SetTextColor(_memDc, _textColor);
+        var textRect = bar;
+        fixed (char* t = "显示桌面")
+        {
+            PInvoke.DrawText(_memDc, t, 4, &textRect,
+                DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
+                DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
         }
     }
 

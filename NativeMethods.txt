@@ -19,6 +19,10 @@ SetForegroundWindow
 SetWindowLongPtrW
 GetWindowLongPtrW
 SetLayeredWindowAttributes
+EnumWindows
+IsWindowVisible
+IsIconic
+GetWindowThreadProcessId
 CREATESTRUCTW
 
 // messages & hit-test

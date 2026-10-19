@@ -16,6 +16,20 @@ internal enum ThemeMode
     Dark,
 }
 
+/// <summary>Что делает крестик на карточке.</summary>
+internal enum CloseAction
+{
+    Close,
+    Minimize,
+}
+
+/// <summary>Что делает клик по карточке уже активного окна.</summary>
+internal enum ActiveClickAction
+{
+    SendToBottom,
+    Minimize,
+}
+
 /// <summary>Панель одного монитора: сторона, ширина, показывать ли её вообще.</summary>
 internal sealed class MonitorSettings
 {
@@ -50,6 +64,21 @@ internal sealed class Settings
 
     /// <summary>Светлое или тёмное оформление панели.</summary>
     public ThemeMode Theme { get; set; } = ThemeMode.Light;
+
+    /// <summary>Крестик на карточке: закрыть программу или только свернуть.</summary>
+    public CloseAction CloseAction { get; set; } = CloseAction.Close;
+
+    /// <summary>Клик по карточке активного окна: убрать назад или свернуть.</summary>
+    public ActiveClickAction ActiveClickAction { get; set; } = ActiveClickAction.SendToBottom;
+
+    /// <summary>Свёрнутые окна показывать крупной карточкой (иначе — узкой полоской).</summary>
+    public bool MinimizedAsCard { get; set; } = true;
+
+    /// <summary>Увеличение превью при наведении.</summary>
+    public bool HoverZoom { get; set; } = true;
+
+    /// <summary>Показывать полосу прокрутки.</summary>
+    public bool ShowScrollbar { get; set; } = true;
 
     /// <summary>Настройки монитора; отсутствующие заводятся на лету по образцу первой панели.</summary>
     public MonitorSettings For(string device)

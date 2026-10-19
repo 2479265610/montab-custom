@@ -43,6 +43,13 @@ internal sealed unsafe class TrayIcon : IDisposable
     const uint CmdGlassBase = 20; // + индекс в GlassSteps
     static readonly int[] GlassSteps = [30, 50, 70, 85];
 
+    // Поведение панели
+    const uint CmdCloseBase = 40;   // +0 закрыть, +1 свернуть
+    const uint CmdActiveBase = 50;  // +0 убрать назад, +1 свернуть
+    const uint CmdMinAsCard = 60;
+    const uint CmdHoverZoom = 61;
+    const uint CmdScrollbar = 62;
+
     static bool s_classRegistered;
 
     readonly PanelHost _host;
@@ -371,6 +378,32 @@ internal sealed unsafe class TrayIcon : IDisposable
                     (nuint)look.Value, "外观");
             }
 
+            var behave = PInvoke.CreatePopupMenu();
+            if (behave != default)
+            {
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING,
+                    _host.Settings.CloseAction == CloseAction.Close), CmdCloseBase, "点 × 关闭程序");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING,
+                    _host.Settings.CloseAction == CloseAction.Minimize), CmdCloseBase + 1, "点 × 仅最小化");
+                PInvoke.AppendMenu(behave, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING,
+                    _host.Settings.ActiveClickAction == ActiveClickAction.SendToBottom),
+                    CmdActiveBase, "点当前窗口：压到最下面");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING,
+                    _host.Settings.ActiveClickAction == ActiveClickAction.Minimize),
+                    CmdActiveBase + 1, "点当前窗口：最小化");
+                PInvoke.AppendMenu(behave, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.MinimizedAsCard),
+                    CmdMinAsCard, "最小化窗口显示为大卡片");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.HoverZoom),
+                    CmdHoverZoom, "悬停放大预览");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.ShowScrollbar),
+                    CmdScrollbar, "显示滚动条");
+
+                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_POPUP,
+                    (nuint)behave.Value, "行为");
+            }
+
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
             PInvoke.AppendMenu(menu, Check(MENU_ITEM_FLAGS.MF_STRING, Autostart.IsEnabled()),
                 CmdAutostart, Strings.Autostart);
@@ -437,6 +470,27 @@ internal sealed unsafe class TrayIcon : IDisposable
                 break;
             case CmdGlassOff:
                 _host.SetGlass(0);
+                break;
+            case CmdCloseBase:
+                _host.UpdatePreferences(s => s.CloseAction = CloseAction.Close);
+                break;
+            case CmdCloseBase + 1:
+                _host.UpdatePreferences(s => s.CloseAction = CloseAction.Minimize);
+                break;
+            case CmdActiveBase:
+                _host.UpdatePreferences(s => s.ActiveClickAction = ActiveClickAction.SendToBottom);
+                break;
+            case CmdActiveBase + 1:
+                _host.UpdatePreferences(s => s.ActiveClickAction = ActiveClickAction.Minimize);
+                break;
+            case CmdMinAsCard:
+                _host.UpdatePreferences(s => s.MinimizedAsCard = !s.MinimizedAsCard);
+                break;
+            case CmdHoverZoom:
+                _host.UpdatePreferences(s => s.HoverZoom = !s.HoverZoom);
+                break;
+            case CmdScrollbar:
+                _host.UpdatePreferences(s => s.ShowScrollbar = !s.ShowScrollbar);
                 break;
             default:
                 if (cmd >= CmdGlassBase && cmd < CmdGlassBase + GlassSteps.Length)
