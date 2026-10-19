@@ -52,15 +52,52 @@ internal sealed class SwitchController
     void ActivateCore(HWND goal)
     {
         if (PInvoke.IsIconic(goal))
-            PInvoke.ShowWindow(goal, SHOW_WINDOW_CMD.SW_RESTORE);
-
-        if (!PInvoke.SetForegroundWindow(goal))
         {
-            // Панель не активируется (WS_EX_NOACTIVATE), поэтому система может
-            // держать foreground lock. Имитация нажатия Alt его снимает.
-            PInvoke.keybd_event(VkMenu, 0, 0, 0);
-            PInvoke.keybd_event(VkMenu, 0, KEYBD_EVENT_FLAGS.KEYEVENTF_KEYUP, 0);
+            PInvoke.ShowWindow(goal, SHOW_WINDOW_CMD.SW_RESTORE);
+            // Окно, которое система считает foreground-окном, иногда игнорирует
+            // SW_RESTORE — добиваем обычным показом.
+            if (PInvoke.IsIconic(goal))
+                PInvoke.ShowWindow(goal, SHOW_WINDOW_CMD.SW_SHOWNORMAL);
+        }
+
+        if (PInvoke.SetForegroundWindow(goal))
+            return;
+
+        // Панель не активируется (WS_EX_NOACTIVATE), поэтому система может
+        // держать foreground lock. Имитация нажатия Alt его снимает.
+        PInvoke.keybd_event(VkMenu, 0, 0, 0);
+        PInvoke.keybd_event(VkMenu, 0, KEYBD_EVENT_FLAGS.KEYEVENTF_KEYUP, 0);
+        if (PInvoke.SetForegroundWindow(goal))
+            return;
+
+        // Браузеры (Chromium) часто не отдают фокус по простому запросу:
+        // система считает, что смену инициировал «чужой» поток. Присоединяем
+        // ввод к потоку цели и к потоку текущего foreground-окна — тогда
+        // BringWindowToTop + SetForegroundWindow проходят.
+        uint pid;
+        uint goalThread = PInvoke.GetWindowThreadProcessId(goal, &pid);
+
+        var foreground = PInvoke.GetForegroundWindow();
+        uint fgPid;
+        uint fgThread = foreground == default ? 0 : PInvoke.GetWindowThreadProcessId(foreground, &fgPid);
+
+        uint self = PInvoke.GetCurrentThreadId();
+        bool attachedGoal = goalThread != 0 && goalThread != self &&
+                            PInvoke.AttachThreadInput(self, goalThread, true);
+        bool attachedFg = fgThread != 0 && fgThread != self && fgThread != goalThread &&
+                          PInvoke.AttachThreadInput(self, fgThread, true);
+        try
+        {
+            PInvoke.BringWindowToTop(goal);
             PInvoke.SetForegroundWindow(goal);
+            PInvoke.SetFocus(goal);
+        }
+        finally
+        {
+            if (attachedFg)
+                PInvoke.AttachThreadInput(self, fgThread, false);
+            if (attachedGoal)
+                PInvoke.AttachThreadInput(self, goalThread, false);
         }
     }
 }

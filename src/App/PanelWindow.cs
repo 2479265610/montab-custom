@@ -433,8 +433,15 @@ internal sealed unsafe class PanelWindow
                         _pendingLabelItem = null;
                         if (!PInvoke.IsWindow(pending.Hwnd))
                             break;
-                        // Клик по уже активному окну: убрать назад или свернуть
-                        if (pending.Hwnd == _tracker.ForegroundWindow)
+                        // Свёрнутое окно может оставаться «foreground» в системе:
+                        // тогда клик по его карточке уходил в ветку «окно уже активно»
+                        // и снова его сворачивал — карточка «не открывалась».
+                        // Поэтому свёрнутое всегда восстанавливаем, а не переключаем.
+                        if (PInvoke.IsIconic(pending.Hwnd))
+                        {
+                            _switch.Activate(pending.Hwnd);
+                        }
+                        else if (pending.Hwnd == _tracker.ForegroundWindow)
                         {
                             if (_host.Settings.ActiveClickAction == ActiveClickAction.Minimize)
                                 PInvoke.ShowWindow(pending.Hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);

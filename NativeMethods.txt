@@ -16,6 +16,10 @@ GetClientRect
 InvalidateRect
 UpdateWindow
 SetForegroundWindow
+AttachThreadInput
+BringWindowToTop
+SetFocus
+GetCurrentThreadId
 SetWindowLongPtrW
 GetWindowLongPtrW
 SetLayeredWindowAttributes
