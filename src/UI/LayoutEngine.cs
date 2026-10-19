@@ -35,6 +35,9 @@ internal sealed class LayoutEngine
     /// <summary>Область кнопки «Показать рабочий стол» в клиентских координатах.</summary>
     public RECT DesktopBar { get; private set; }
 
+    /// <summary>Область кнопки-кнопки «закрепить порядок» справа от неё.</summary>
+    public RECT PinButton { get; private set; }
+
     public IReadOnlyList<LayoutItem> Compute(IReadOnlyList<WindowItem> items, RECT client, uint dpi,
         int scrollOffset, bool minimizedAsCard = true)
     {
@@ -48,11 +51,25 @@ internal sealed class LayoutEngine
         int left = client.left + _padding;
         int barTop = _header;
         int barBottom = barTop + _desktopBar;
+        int barRight = client.right - _padding;
+
+        // Слева — «Показать рабочий стол», справа — кнопка фиксации порядка.
+        int span = barRight - left;
+        int pinWidth = Math.Min((int)(_desktopBar * 1.3), span * 45 / 100);
+        int split = Math.Max(left + _desktopBar, barRight - pinWidth - _gap);
+
         DesktopBar = new RECT
         {
             left = left,
             top = barTop,
-            right = client.right - _padding,
+            right = split,
+            bottom = barBottom,
+        };
+        PinButton = new RECT
+        {
+            left = split + _gap,
+            top = barTop,
+            right = barRight,
             bottom = barBottom,
         };
         int y = barBottom + _gap - scrollOffset;

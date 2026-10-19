@@ -85,7 +85,8 @@ internal sealed unsafe class Renderer : IDisposable
     public bool IsDark => _dark;
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
-        WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default)
+        WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default,
+        RECT pinButton = default, bool locked = false)
     {
         SetDpi(dpi);
 
@@ -104,7 +105,9 @@ internal sealed unsafe class Renderer : IDisposable
             PInvoke.FillRect(_memDc, in client, _bgBrush);
             DrawHeaderGrip(client);
             if (desktopBar.bottom > desktopBar.top)
-                DrawDesktopBar(desktopBar);
+                DrawButton(desktopBar, "显示桌面", false);
+            if (pinButton.bottom > pinButton.top)
+                DrawPinButton(pinButton, locked);
 
             foreach (var li in layout)
             {
@@ -142,15 +145,15 @@ internal sealed unsafe class Renderer : IDisposable
         }
     }
 
-    /// <summary>Кнопка «Показать рабочий стол»: сворачивает все окна.</summary>
-    void DrawDesktopBar(RECT bar)
+    /// <summary>Кнопка с текстом над лентой.</summary>
+    void DrawButton(RECT bar, string label, bool highlight)
     {
-        PInvoke.FillRect(_memDc, in bar, _stripBrush);
+        PInvoke.FillRect(_memDc, in bar, highlight ? _stripActiveBrush : _stripBrush);
 
         var frame = bar;
         for (int i = 0; i < _thinBorder; i++)
         {
-            PInvoke.FrameRect(_memDc, in frame, _frameBrush);
+            PInvoke.FrameRect(_memDc, in frame, highlight ? _accentBrush : _frameBrush);
             frame.left++;
             frame.top++;
             frame.right--;
@@ -159,12 +162,55 @@ internal sealed unsafe class Renderer : IDisposable
 
         PInvoke.SetTextColor(_memDc, _textColor);
         var textRect = bar;
-        fixed (char* t = "显示桌面")
+        fixed (char* t = label)
         {
-            PInvoke.DrawText(_memDc, t, 4, &textRect,
+            PInvoke.DrawText(_memDc, t, label.Length, &textRect,
                 DRAW_TEXT_FORMAT.DT_SINGLELINE | DRAW_TEXT_FORMAT.DT_VCENTER |
                 DRAW_TEXT_FORMAT.DT_CENTER | DRAW_TEXT_FORMAT.DT_NOPREFIX);
         }
+    }
+
+    /// <summary>Кнопка-«канцелярская кнопка»: фиксирует порядок карточек.</summary>
+    void DrawPinButton(RECT bar, bool locked)
+    {
+        PInvoke.FillRect(_memDc, in bar, locked ? _stripActiveBrush : _stripBrush);
+
+        var frame = bar;
+        for (int i = 0; i < _thinBorder; i++)
+        {
+            PInvoke.FrameRect(_memDc, in frame, locked ? _accentBrush : _frameBrush);
+            frame.left++;
+            frame.top++;
+            frame.right--;
+            frame.bottom--;
+        }
+
+        // Значок кнопки: шляпка + ножка
+        HBRUSH brush = locked ? _accentBrush : _frameBrush;
+        int cx = (bar.left + bar.right) / 2;
+        int cy = (bar.top + bar.bottom) / 2;
+        int capW = Math.Max(_thinBorder * 6, _iconSize / 2);
+        int capH = Math.Max(_thinBorder * 2, 2);
+        int bodyW = Math.Max(capH, _thinBorder * 2);
+        int bodyH = capW * 3 / 4;
+
+        var cap = new RECT
+        {
+            left = cx - capW / 2,
+            top = cy - (capH + bodyH) / 2,
+            right = cx + capW / 2,
+            bottom = cy - (capH + bodyH) / 2 + capH,
+        };
+        PInvoke.FillRect(_memDc, in cap, brush);
+
+        var body = new RECT
+        {
+            left = cx - bodyW / 2,
+            top = cap.bottom,
+            right = cx + bodyW / 2,
+            bottom = cap.bottom + bodyH,
+        };
+        PInvoke.FillRect(_memDc, in body, brush);
     }
 
     /// <summary>

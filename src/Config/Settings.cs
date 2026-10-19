@@ -80,6 +80,9 @@ internal sealed class Settings
     /// <summary>Показывать полосу прокрутки.</summary>
     public bool ShowScrollbar { get; set; } = true;
 
+    /// <summary>Зафиксировать порядок карточек: перетаскивание его больше не меняет.</summary>
+    public bool LockOrder { get; set; }
+
     /// <summary>Настройки монитора; отсутствующие заводятся на лету по образцу первой панели.</summary>
     public MonitorSettings For(string device)
     {

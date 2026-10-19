@@ -308,7 +308,8 @@ internal sealed unsafe class PanelWindow
                 }
                 _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow);
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
-                    _press == PressState.Dragging ? _pressItem : null, _layout.DesktopBar);
+                    _press == PressState.Dragging ? _pressItem : null, _layout.DesktopBar,
+                    _layout.PinButton, _host.Settings.LockOrder);
                 _scrollbar?.Update(_layout.TotalHeight, client.bottom - client.top, _scrollOffset, _pointerNearby);
                 return new LRESULT(0);
 
@@ -650,6 +651,19 @@ internal sealed unsafe class PanelWindow
 
     void OnPress(int x, int y, bool ctrl)
     {
+        // Кнопки над лентой. Раньше они попадали в ветку «перетаскивание панели»
+        // (HitTest там пустой), поэтому клик по «Показать рабочий стол» не срабатывал.
+        if (Inside(_layout.PinButton, x, y))
+        {
+            _host.UpdatePreferences(s => s.LockOrder = !s.LockOrder);
+            return;
+        }
+        if (Inside(_layout.DesktopBar, x, y))
+        {
+            ShowDesktop();
+            return;
+        }
+
         // «Ручка» сверху или пустая зона — перетаскивание всей панели
         if (y < _headerPx || HitTest(x, y) is not { } li)
         {
@@ -838,6 +852,9 @@ internal sealed unsafe class PanelWindow
 
     void DragTo(int x, int y)
     {
+        // Порядок зафиксирован кнопкой-«кнопкой» — перетаскивание не меняет список
+        if (_host.Settings.LockOrder)
+            return;
         if (_pressItem is null)
             return;
         if (HitTest(x, y) is not { } over || over.Window == _pressItem)
