@@ -14,22 +14,22 @@ namespace Montab.UI;
 internal sealed unsafe class Renderer : IDisposable
 {
     // COLORREF = 0x00BBGGRR
-    static readonly COLORREF Background = new(0x001C1A1A);      // #1A1A1C
-    static readonly COLORREF StripFill = new(0x00262424);       // #242426
-    static readonly COLORREF StripActiveFill = new(0x00312E2E); // #2E2E31
+    static readonly COLORREF Background = new(0x00F7F5F5);      // #F5F5F7
+    static readonly COLORREF StripFill = new(0x00FFFFFF);       // #FFFFFF
+    static readonly COLORREF StripActiveFill = new(0x00EDE8E8); // #E8E8ED
     static readonly COLORREF Accent = new(0x00FF840A);          // #0A84FF
     static readonly COLORREF CloseHover = new(0x002311E8);      // #E81123
-    static readonly COLORREF TextColor = new(0x00F7F2F2);       // #F2F2F7
-    static readonly COLORREF TextDimColor = new(0x00938E8E);    // #8E8E93
+    static readonly COLORREF TextColor = new(0x001E1C1C);       // #1C1C1E
+    static readonly COLORREF TextDimColor = new(0x00736E6E);    // #6E6E73
     static readonly COLORREF White = new(0x00FFFFFF);
 
     readonly HBRUSH _bgBrush = PInvoke.CreateSolidBrush(Background);
     readonly HBRUSH _stripBrush = PInvoke.CreateSolidBrush(StripFill);
     readonly HBRUSH _stripActiveBrush = PInvoke.CreateSolidBrush(StripActiveFill);
     readonly HBRUSH _accentBrush = PInvoke.CreateSolidBrush(Accent);
-    readonly HBRUSH _frameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x003C3A3A));
+    readonly HBRUSH _frameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00DBD6D6));
     readonly HBRUSH _closeHoverBrush = PInvoke.CreateSolidBrush(CloseHover);
-    readonly HBRUSH _dragFillBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00463C3C));
+    readonly HBRUSH _dragFillBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00E5E0E0));
     readonly HBRUSH _dragFrameBrush = PInvoke.CreateSolidBrush(new COLORREF(0x00938E8E));
 
     // Кеш на текущий DPI

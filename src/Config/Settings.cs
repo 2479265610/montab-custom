@@ -35,6 +35,12 @@ internal sealed class Settings
     public DockEdge Edge { get; set; } = DockEdge.Right;
     public double WidthPercent { get; set; } = DefaultWidthPercent;
 
+    /// <summary>
+    /// Прозрачность акрилового (матового стекла) фона панели: 0 — выключено,
+    /// 1–100 — сила затемнения подложки. Размытие задаётся системой и не регулируется.
+    /// </summary>
+    public int GlassAlpha { get; set; } = 0;
+
     /// <summary>Настройки монитора; отсутствующие заводятся на лету по образцу первой панели.</summary>
     public MonitorSettings For(string device)
     {

@@ -31,6 +31,9 @@ internal sealed unsafe class PanelWindow
 
     const nuint ActivateTimerId = 1;
     const nuint HoverZoomTimerId = 2;
+    /// <summary>Отложенное согласование с shell после отпускания края панели.</summary>
+    const nuint ResizeSettleTimerId = 3;
+    const int ResizeSettleDelayMs = 140;
     /// <summary>Окно ожидания второго клика по живому тайлу.</summary>
     const uint ClickDelayMs = 150;
     const uint HoverZoomDelayMs = 700;
@@ -385,6 +388,11 @@ internal sealed unsafe class PanelWindow
                     PInvoke.KillTimer(hwnd, HoverZoomTimerId);
                     TryBeginHoverZoom();
                 }
+                else if (wParam.Value == ResizeSettleTimerId)
+                {
+                    PInvoke.KillTimer(hwnd, ResizeSettleTimerId);
+                    UpdatePosition();
+                }
                 break;
 
             case PInvoke.WM_MOUSELEAVE:
@@ -400,11 +408,13 @@ internal sealed unsafe class PanelWindow
             case PInvoke.WM_CAPTURECHANGED:
                 if (_resizing)
                 {
-                    // Переговоры с shell один раз в конце drag (и при его обрыве):
-                    // work area и максимизированные окна встают по итоговой ширине.
+                    // Согласование с shell (work area + максимизированные окна)
+                    // откладываем на мгновение: отпустив край, пользователь ещё
+                    // продолжает движение курсора, и мгновенный переезд окон
+                    // читается как рывок.
                     _resizing = false;
-                    UpdatePosition();
                     _host.Save();
+                    PInvoke.SetTimer(hwnd, ResizeSettleTimerId, ResizeSettleDelayMs, null);
                 }
                 _press = PressState.None;
                 _pressItem = null;

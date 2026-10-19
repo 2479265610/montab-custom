@@ -44,7 +44,9 @@ internal sealed class LayoutEngine
 
         foreach (var item in items)
         {
-            bool isStrip = item.IsMinimized;
+            // Свёрнутые окна тоже показываем крупной плиткой с превью:
+            // пользователь просил, чтобы минимизация не уменьшала карточку.
+            bool isStrip = false;
             RECT bounds, preview = default, label;
 
             if (isStrip)
