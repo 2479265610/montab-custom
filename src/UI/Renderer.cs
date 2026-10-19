@@ -168,7 +168,9 @@ internal sealed unsafe class Renderer : IDisposable
         {
             int x = centerX + i * _gripGap - _gripDot / 2;
             var r = new RECT { left = x, top = y, right = x + _gripDot, bottom = y + _gripDot };
-            PInvoke.FillRect(_memDc, in r, _frameBrush);
+            // Точки-ручка должны читаться и на светлом, и на тёмном фоне:
+            // рамка-«серый» подходит для обеих тем.
+            PInvoke.FillRect(_memDc, in r, _dragFrameBrush);
         }
     }
 
