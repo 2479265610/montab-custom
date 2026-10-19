@@ -77,6 +77,12 @@ internal sealed class Settings
     /// <summary>Увеличение превью при наведении.</summary>
     public bool HoverZoom { get; set; } = true;
 
+    /// <summary>
+    /// Запоминать раскладку значков рабочего стола для каждого числа столбцов:
+    /// панель сужает рабочую область, и значки переезжают — возвращаем их назад.
+    /// </summary>
+    public bool RememberIcons { get; set; } = true;
+
     /// <summary>Показывать полосу прокрутки.</summary>
     public bool ShowScrollbar { get; set; } = true;
 

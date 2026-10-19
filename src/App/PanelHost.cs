@@ -22,6 +22,7 @@ internal sealed unsafe class PanelHost
     readonly HINSTANCE _hInstance;
     TrayIcon? _tray;
     SettingsWindow? _settingsWindow;
+    IconLayoutKeeper? _icons;
     /// <summary>Быстрое «скрыть всё» из трея: панелей нет, но настройки мониторов целы.</summary>
     bool _hidden;
 
@@ -51,6 +52,7 @@ internal sealed unsafe class PanelHost
     public void Start()
     {
         _tray = new TrayIcon(this, _hInstance);
+        _icons = new IconLayoutKeeper(_settings);
 
         _tracker.Changed += OnTrackerChanged;
         _tracker.ForegroundChanged += _switch.OnForegroundChanged;
@@ -258,6 +260,13 @@ internal sealed unsafe class PanelHost
         foreach (var panel in _panels.Values)
             panel.Destroy();
         _panels.Clear();
+
+        // Рабочая область вернулась на место — возвращаем раскладку значков
+        // той ширины, на которой панели нет.
+        Thread.Sleep(250);
+        _icons?.RestoreWidest();
+        _icons?.Dispose();
+        _icons = null;
 
         _tray?.Dispose();
         _tray = null;

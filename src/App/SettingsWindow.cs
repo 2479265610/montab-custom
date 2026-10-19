@@ -162,6 +162,14 @@ internal sealed unsafe class SettingsWindow
 
         _rows.Add(new Row
         {
+            Label = "记忆桌面图标布局",
+            Kind = RowKind.Check,
+            Get = () => s.RememberIcons ? 1 : 0,
+            Set = i => _host.UpdatePreferences(p => p.RememberIcons = i == 1),
+        });
+
+        _rows.Add(new Row
+        {
             Label = "锁定卡片顺序",
             Kind = RowKind.Check,
             Get = () => s.LockOrder ? 1 : 0,
