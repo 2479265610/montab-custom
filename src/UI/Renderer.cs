@@ -89,7 +89,8 @@ internal sealed unsafe class Renderer : IDisposable
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
         WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default,
-        RECT pinButton = default, bool locked = false, WindowItem? hoverGrip = null)
+        RECT pinButton = default, bool locked = false, WindowItem? hoverGrip = null,
+        RECT gearButton = default)
     {
         SetDpi(dpi);
 
@@ -149,6 +150,8 @@ internal sealed unsafe class Renderer : IDisposable
                 DrawButton(desktopBar, "显示桌面", false);
             if (pinButton.bottom > pinButton.top)
                 DrawPinButton(pinButton, locked);
+            if (gearButton.bottom > gearButton.top)
+                DrawGearButton(gearButton);
 
             PInvoke.BitBlt(hdc, 0, 0, width, height, _memDc, 0, 0, ROP_CODE.SRCCOPY);
         }
@@ -200,6 +203,40 @@ internal sealed unsafe class Renderer : IDisposable
     }
 
     /// <summary>Кнопка-«канцелярская кнопка»: фиксирует порядок карточек.</summary>
+    /// <summary>Кнопка настроек: три полоски — привычный значок «меню/настройки».</summary>
+    void DrawGearButton(RECT bar)
+    {
+        PInvoke.FillRect(_memDc, in bar, _stripBrush);
+
+        var frame = bar;
+        for (int i = 0; i < _thinBorder; i++)
+        {
+            PInvoke.FrameRect(_memDc, in frame, _frameBrush);
+            frame.left++;
+            frame.top++;
+            frame.right--;
+            frame.bottom--;
+        }
+
+        int cx = (bar.left + bar.right) / 2;
+        int cy = (bar.top + bar.bottom) / 2;
+        int w = Math.Max(_iconSize, 10);
+        int h = Math.Max(_thinBorder * 2, 2);
+        int gap = h + Math.Max(_thinBorder, 2);
+
+        for (int i = -1; i <= 1; i++)
+        {
+            var line = new RECT
+            {
+                left = cx - w / 2,
+                top = cy + i * gap - h / 2,
+                right = cx + w / 2,
+                bottom = cy + i * gap - h / 2 + h,
+            };
+            PInvoke.FillRect(_memDc, in line, _dragFrameBrush);
+        }
+    }
+
     void DrawPinButton(RECT bar, bool locked)
     {
         PInvoke.FillRect(_memDc, in bar, locked ? _stripActiveBrush : _stripBrush);

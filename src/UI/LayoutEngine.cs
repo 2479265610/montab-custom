@@ -45,6 +45,9 @@ internal sealed class LayoutEngine
     /// <summary>Область кнопки-кнопки «закрепить порядок» справа от неё.</summary>
     public RECT PinButton { get; private set; }
 
+    /// <summary>Кнопка настроек (три полоски) в правом верхнем углу.</summary>
+    public RECT GearButton { get; private set; }
+
     public IReadOnlyList<LayoutItem> Compute(IReadOnlyList<WindowItem> items, RECT client, uint dpi,
         int scrollOffset, bool minimizedAsCard = true)
     {
@@ -60,10 +63,10 @@ internal sealed class LayoutEngine
         int barBottom = barTop + _desktopBar;
         int barRight = client.right - _padding;
 
-        // Слева — «Показать рабочий стол», справа — кнопка фиксации порядка.
+        // Слева — «Показать рабочий стол», справа — фиксация порядка и кнопка настроек.
         int span = barRight - left;
-        int pinWidth = Math.Min((int)(_desktopBar * 1.3), span * 45 / 100);
-        int split = Math.Max(left + _desktopBar, barRight - pinWidth - _gap);
+        int btn = Math.Max(Scale(22, dpi), Math.Min((int)(_desktopBar * 1.15), (span - 2 * _gap) / 4));
+        int split = Math.Max(left + _desktopBar, barRight - 2 * btn - 2 * _gap);
 
         DesktopBar = new RECT
         {
@@ -75,6 +78,13 @@ internal sealed class LayoutEngine
         PinButton = new RECT
         {
             left = split + _gap,
+            top = barTop,
+            right = split + _gap + btn,
+            bottom = barBottom,
+        };
+        GearButton = new RECT
+        {
+            left = barRight - btn,
             top = barTop,
             right = barRight,
             bottom = barBottom,

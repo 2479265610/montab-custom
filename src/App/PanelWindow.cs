@@ -316,7 +316,7 @@ internal sealed unsafe class PanelWindow
                              (_press == PressState.Pressed && _pressGrip) ? _pressItem : null;
                 _renderer.Paint(hwnd, _layoutItems, _tracker.ForegroundWindow, _dpi, _hoverClose,
                     lifted, _layout.DesktopBar,
-                    _layout.PinButton, _host.Settings.LockOrder, _hoverGrip);
+                    _layout.PinButton, _host.Settings.LockOrder, _hoverGrip, _layout.GearButton);
                 _scrollbar?.Update(_layout.TotalHeight, client.bottom - client.top, _scrollOffset, _pointerNearby);
                 return new LRESULT(0);
 
@@ -675,6 +675,12 @@ internal sealed unsafe class PanelWindow
             ShowDesktop();
             return;
         }
+        if (Inside(_layout.GearButton, x, y))
+        {
+            // Страница настроек — вместо похода в контекстное меню трея
+            _host.OpenSettings(Device);
+            return;
+        }
 
         // «Ручка» карточки (две косые черты в её левом нижнем углу) — единственное
         // место, откуда начинается перетаскивание по списку. Раньше им было всё
@@ -998,6 +1004,12 @@ internal sealed unsafe class PanelWindow
         if (Inside(_layout.DesktopBar, x, y))
         {
             ShowDesktop();
+            return;
+        }
+        if (Inside(_layout.GearButton, x, y))
+        {
+            // Страница настроек — вместо похода в контекстное меню трея
+            _host.OpenSettings(Device);
             return;
         }
 

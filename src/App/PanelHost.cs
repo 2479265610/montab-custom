@@ -21,6 +21,7 @@ internal sealed unsafe class PanelHost
     readonly List<string> _stale = [];
     readonly HINSTANCE _hInstance;
     TrayIcon? _tray;
+    SettingsWindow? _settingsWindow;
     /// <summary>Быстрое «скрыть всё» из трея: панелей нет, но настройки мониторов целы.</summary>
     bool _hidden;
 
@@ -38,6 +39,11 @@ internal sealed unsafe class PanelHost
 
     /// <summary>Мониторы системы слева направо — порядок пунктов в меню трея.</summary>
     public IReadOnlyList<DisplayInfo> Displays => _displays;
+
+    /// <summary>Дисплей для страницы настроек, открытой из трея.</summary>
+    public string PrimaryDevice =>
+        _displays.Count > 0 ? _displays[0].Device
+        : _settings.Monitors.Count > 0 ? _settings.Monitors[0].Device : "";
 
     /// <summary>Все панели временно скрыты (левый клик по иконке в трее).</summary>
     public bool Hidden => _hidden;
@@ -161,6 +167,7 @@ internal sealed unsafe class PanelHost
         _settings.Save();
         if (_panels.TryGetValue(device, out var panel))
             panel.Relayout();
+        SyncSettingsWindow();
     }
 
     /// <summary>Светлое/тёмное оформление — общее для всех панелей.</summary>
@@ -172,6 +179,21 @@ internal sealed unsafe class PanelHost
         _settings.Save();
         foreach (var panel in _panels.Values)
             panel.ApplyTheme();
+        SyncSettingsWindow();
+    }
+
+    /// <summary>Ширина полосы в процентах от рабочей области монитора.</summary>
+    public void SetWidth(string device, double percent)
+    {
+        var mon = _settings.For(device);
+        percent = Math.Clamp(percent, 5, 50);
+        if (Math.Abs(mon.WidthPercent - percent) < 0.05)
+            return;
+        mon.WidthPercent = percent;
+        _settings.Save();
+        if (_panels.TryGetValue(device, out var panel))
+            panel.Relayout();
+        SyncSettingsWindow();
     }
 
     /// <summary>Прозрачность матового стекла: 0 — выключено, 1–100 — плотность.</summary>
@@ -184,6 +206,7 @@ internal sealed unsafe class PanelHost
         _settings.Save();
         foreach (var panel in _panels.Values)
             panel.ApplyGlass();
+        SyncSettingsWindow();
     }
 
     /// <summary>Меняет настройки поведения и сразу применяет их ко всем панелям.</summary>
@@ -193,6 +216,7 @@ internal sealed unsafe class PanelHost
         _settings.Save();
         foreach (var panel in _panels.Values)
             panel.Refresh();
+        SyncSettingsWindow();
     }
 
     /// <summary>
@@ -214,6 +238,16 @@ internal sealed unsafe class PanelHost
         _settings.Save();
         RefreshDisplays();
     }
+
+    /// <summary>Страница настроек (одна на приложение, открывается с панели или из трея).</summary>
+    public void OpenSettings(string device)
+    {
+        _settingsWindow ??= new SettingsWindow(this, device);
+        _settingsWindow.Show(_hInstance);
+    }
+
+    /// <summary>Обновить открытую страницу настроек, если она есть.</summary>
+    void SyncSettingsWindow() => _settingsWindow?.Refresh();
 
     public void Save() => _settings.Save();
 

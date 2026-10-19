@@ -37,6 +37,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     const uint MonitorRight = 2;
 
     // Оформление панели
+    const uint CmdSettings = 70;
     const uint CmdThemeLight = 3;
     const uint CmdThemeDark = 4;
     const uint CmdGlassOff = 10;
@@ -355,6 +356,7 @@ internal sealed unsafe class TrayIcon : IDisposable
                     (nuint)sub.Value, Strings.Monitor(i + 1, display.Width, display.Height, display.Primary));
             }
 
+            PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, CmdSettings, "设置页面…");
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, null);
 
             var look = PInvoke.CreatePopupMenu();
@@ -461,6 +463,9 @@ internal sealed unsafe class TrayIcon : IDisposable
                 break;
             case CmdExit:
                 _host.Exit();
+                break;
+            case CmdSettings:
+                _host.OpenSettings(_host.PrimaryDevice);
                 break;
             case CmdThemeLight:
                 _host.SetTheme(ThemeMode.Light);
