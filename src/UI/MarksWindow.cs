@@ -77,6 +77,8 @@ internal sealed unsafe class MarksWindow
 
         PInvoke.SetWindowPos(_hwnd, default, panelScreen.left, panelScreen.top, w, h,
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
+        // UpdateLayeredWindow сам окно не показывает — его надо показать один раз
+        PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
         _width = w;
         _height = h;
     }
