@@ -75,19 +75,6 @@ internal sealed unsafe class SettingsWindow
 
     public bool IsAlive => _hwnd != default;
 
-    static void Log(string msg)
-    {
-        try
-        {
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "montab-settings.log"), msg + "\n");
-        }
-        catch
-        {
-            // диагностика не должна ломать приложение
-        }
-    }
-
     void BuildRows()
     {
         var s = _host.Settings;
@@ -190,9 +177,7 @@ internal sealed unsafe class SettingsWindow
             return;
         }
 
-        Log("show: start");
-        try { EnsureClass(hInstance); Log("show: class ok"); }
-        catch (Exception ex) { Log("show: class fail " + ex.GetType().Name); throw; }
+        EnsureClass(hInstance);
 
         // Сначала окно минимального размера: реальные габариты считаем после того,
         // как узнаем DPI этого окна (иначе масштаб был бы неизвестен).
@@ -205,11 +190,7 @@ internal sealed unsafe class SettingsWindow
             default, default, hInstance, WindowRef.Pin(this));
 
         if (_hwnd == default)
-        {
-            Log("show: create failed err=" + Marshal.GetLastWin32Error());
             return;
-        }
-        Log("show: created");
 
         ApplyTheme();
         ApplyFonts(PInvoke.GetDpiForWindow(_hwnd));
@@ -232,7 +213,6 @@ internal sealed unsafe class SettingsWindow
 
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOW);
         PInvoke.SetForegroundWindow(_hwnd);
-        Log("show: shown");
     }
 
     public void Close()
@@ -244,8 +224,10 @@ internal sealed unsafe class SettingsWindow
     /// <summary>Настройки поменялись из трея — перерисовать страницу.</summary>
     public void Refresh()
     {
-        if (_hwnd != default)
-            PInvoke.InvalidateRect(_hwnd, null, false);
+        if (_hwnd == default)
+            return;
+        ApplyTheme();
+        PInvoke.InvalidateRect(_hwnd, null, false);
     }
 
     int TotalHeightLogical()
