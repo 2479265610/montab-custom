@@ -9,6 +9,16 @@
     </windowsSettings>
   </application>
 
+  <!-- Права администратора: без них нельзя управлять окнами программ,
+       запущенных от имени администратора (UIPI блокирует такие вызовы). -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <!-- Windows 10 / 11 -->

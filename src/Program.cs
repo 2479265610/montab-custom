@@ -7,6 +7,10 @@ using var singleInstance = new Mutex(initiallyOwned: true, "montab.single-instan
 if (!isFirst)
     return;
 
+// Панель теперь администраторская: старый автозапуск через Run нужно
+// перевести на задачу планировщика, иначе при входе будет лишний запрос UAC.
+Autostart.MigrateLegacyRun();
+
 var host = new PanelHost(Settings.Load());
 host.Start();
 
