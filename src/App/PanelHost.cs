@@ -23,6 +23,7 @@ internal sealed unsafe class PanelHost
     TrayIcon? _tray;
     SettingsWindow? _settingsWindow;
     IconLayoutKeeper? _icons;
+    TaskbarHub? _hub;
     /// <summary>Быстрое «скрыть всё» из трея: панелей нет, но настройки мониторов целы.</summary>
     bool _hidden;
 
@@ -42,6 +43,13 @@ internal sealed unsafe class PanelHost
     public IReadOnlyList<DisplayInfo> Displays => _displays;
 
     /// <summary>Дисплей для страницы настроек, открытой из трея.</summary>
+    /// <summary>Клик по значку в панели задач — открыть страницу настроек.</summary>
+    public void OpenSettingsFromTaskbar()
+    {
+        string device = _panels.Values.Select(p => p.Device).FirstOrDefault() ?? PrimaryDevice;
+        OpenSettings(device);
+    }
+
     public string PrimaryDevice =>
         _displays.Count > 0 ? _displays[0].Device
         : _settings.Monitors.Count > 0 ? _settings.Monitors[0].Device : "";
@@ -53,6 +61,10 @@ internal sealed unsafe class PanelHost
     {
         _tray = new TrayIcon(this, _hInstance);
         _icons = new IconLayoutKeeper(_settings);
+
+        // Отдельное невидимое окно — только ради кнопки в панели задач
+        _hub = new TaskbarHub(this);
+        _hub.Create(_hInstance);
 
         _tracker.Changed += OnTrackerChanged;
         _tracker.ForegroundChanged += _switch.OnForegroundChanged;
@@ -267,6 +279,9 @@ internal sealed unsafe class PanelHost
         _icons?.RestoreWidest();
         _icons?.Dispose();
         _icons = null;
+
+        _hub?.Destroy();
+        _hub = null;
 
         _tray?.Dispose();
         _tray = null;
