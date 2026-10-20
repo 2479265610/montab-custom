@@ -144,9 +144,12 @@ internal sealed unsafe class PanelHost
     /// </summary>
     public void ToggleHidden()
     {
-        // Скрывать нечего — все панели выключены в меню: значит, просят показать
-        if (!_hidden && _panels.Count == 0 && !AnyEnabled())
+        // Нет ни одной включённой панели (пользователь всё выключил в меню,
+        // либо это первый запуск): клик должен показать панели, а не крутить
+        // «пусто» между нулём и нулём — иначе значок выглядит мёртвым.
+        if (!AnyEnabled())
         {
+            _hidden = false;
             EnableAllFromTray();
             _settings.Save();
             RefreshDisplays();
@@ -160,9 +163,9 @@ internal sealed unsafe class PanelHost
     /// <summary>Хоть один монитор помечен включённым.</summary>
     bool AnyEnabled()
     {
-        foreach (var display in _displays)
+        foreach (var mon in _settings.Monitors)
         {
-            if (_settings.For(display.Device).Enabled)
+            if (mon.Enabled)
                 return true;
         }
         return false;

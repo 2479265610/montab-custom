@@ -11,26 +11,27 @@ namespace Montab.App;
 /// Explorer шлёт клик по значку в трее, перерегистрацию appbar, смену
 /// дисплеев и рабочей области. Здесь эти сообщения разрешаются точечно.
 /// </summary>
-internal static class MessageFilter
+internal static unsafe class MessageFilter
 {
     const uint FilterAllow = 1;
     /// <summary>WM_COPYGLOBALDATA: нужен, чтобы Explorer мог слать нам DropFiles.</summary>
     const uint WmCopyGlobalData = 0x0049;
 
     [DllImport("user32.dll", SetLastError = true)]
-    static extern bool ChangeWindowMessageFilterEx(nint hwnd, uint msg, uint action, nint changeInfo);
+    static extern bool ChangeWindowMessageFilterEx(void* hwnd, uint msg, uint action, void* changeInfo);
 
     /// <summary>Разрешить окну перечисленные сообщения от процессов с меньшими правами.</summary>
     public static void Allow(HWND hwnd, params uint[] messages)
     {
-        if (hwnd.Value == 0)
+        void* handle = hwnd.Value;
+        if (handle == null)
             return;
 
-        Apply(hwnd.Value, WmCopyGlobalData);
+        Apply(handle, WmCopyGlobalData);
         foreach (uint msg in messages)
-            Apply(hwnd.Value, msg);
+            Apply(handle, msg);
     }
 
-    static void Apply(nint hwnd, uint msg)
-        => ChangeWindowMessageFilterEx(hwnd, msg, FilterAllow, 0);
+    static void Apply(void* hwnd, uint msg)
+        => ChangeWindowMessageFilterEx(hwnd, msg, FilterAllow, null);
 }
