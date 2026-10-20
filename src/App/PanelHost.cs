@@ -23,7 +23,6 @@ internal sealed unsafe class PanelHost
     TrayIcon? _tray;
     SettingsWindow? _settingsWindow;
     IconLayoutKeeper? _icons;
-    TaskbarHub? _hub;
     /// <summary>Быстрое «скрыть всё» из трея: панелей нет, но настройки мониторов целы.</summary>
     bool _hidden;
 
@@ -54,10 +53,6 @@ internal sealed unsafe class PanelHost
     {
         _tray = new TrayIcon(this, _hInstance);
         _icons = new IconLayoutKeeper(_settings);
-
-        // Отдельное невидимое окно — только ради кнопки в панели задач
-        _hub = new TaskbarHub(this);
-        _hub.Create(_hInstance);
 
         _tracker.Changed += OnTrackerChanged;
         _tracker.ForegroundChanged += _switch.OnForegroundChanged;
@@ -144,11 +139,49 @@ internal sealed unsafe class PanelHost
     /// <summary>
     /// Левый клик по иконке в трее: убрать/вернуть панели на всех мониторах.
     /// Настройки мониторов не трогаются — при возврате всё как было.
+    /// Если панелей нет вовсе (все выключены в меню), клик включает основную:
+    /// иначе значок выглядел бы «мёртвым».
     /// </summary>
     public void ToggleHidden()
     {
+        // Скрывать нечего — все панели выключены в меню: значит, просят показать
+        if (!_hidden && _panels.Count == 0 && !AnyEnabled())
+        {
+            EnableAllFromTray();
+            _settings.Save();
+            RefreshDisplays();
+            return;
+        }
+
         _hidden = !_hidden;
         RefreshDisplays();
+    }
+
+    /// <summary>Хоть один монитор помечен включённым.</summary>
+    bool AnyEnabled()
+    {
+        foreach (var display in _displays)
+        {
+            if (_settings.For(display.Device).Enabled)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Включает все мониторы, которые когда-то были настроены, но затем
+    /// выключены. Так «показать панель» из трея возвращает привычную картину,
+    /// а не одну полосу на главном экране.
+    /// </summary>
+    void EnableAllFromTray()
+    {
+        // Сначала заводим записи для реально подключённых мониторов: у только что
+        // установленного приложения списка настроек может не быть вовсе
+        foreach (var display in _displays)
+            _settings.For(display.Device).Enabled = true;
+
+        foreach (var mon in _settings.Monitors)
+            mon.Enabled = true;
     }
 
     public void SetEnabled(string device, bool enabled)
@@ -272,9 +305,6 @@ internal sealed unsafe class PanelHost
         _icons?.RestoreWidest();
         _icons?.Dispose();
         _icons = null;
-
-        _hub?.Destroy();
-        _hub = null;
 
         _tray?.Dispose();
         _tray = null;

@@ -133,6 +133,10 @@ internal sealed unsafe class PanelWindow
         _scrollbar = new ScrollBarWindow(this, _hwnd, hInstance);
         _marks = new MarksWindow(_hwnd, hInstance);
         _appBar = new AppBar(_hwnd, PInvoke.RegisterWindowMessage("montab.appbar"));
+        // Explorer шлёт ABN_POSCHANGED/ABN_FULLSCREENAPP обычными правами —
+        // под UIPI они бы не дошли, и appbar перестал бы чиниться.
+        // Это wParam'ы одного зарегистрированного сообщения, поэтому фильтруем его.
+        MessageFilter.Allow(_hwnd, _appBar.CallbackMessage);
         _appBar.Register();
         UpdatePosition();
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);

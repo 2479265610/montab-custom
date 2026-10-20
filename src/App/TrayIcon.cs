@@ -92,11 +92,30 @@ internal sealed unsafe class TrayIcon : IDisposable
         if (_hwnd == default)
             throw new InvalidOperationException("CreateWindowExW failed");
 
+        AllowFromLowerPrivilege(_hwnd);
+
         int cx = PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CXSMICON);
         int cy = PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYSMICON);
         _icon = LoadTrayIcon(hInstance, cx, cy);
         _iconHidden = CreateDimmed(_icon, cx, cy);
         Add();
+    }
+
+    /// <summary>
+    /// Пропускает к нашему окну сообщения от процессов с меньшими правами:
+    /// клик по значку в трее, перезапуск Explorer'а, смена дисплеев/рабочей области.
+    /// Без этого, работая от администратора, мы бы их не получали вообще.
+    /// </summary>
+    void AllowFromLowerPrivilege(HWND hwnd)
+    {
+        MessageFilter.Allow(hwnd,
+            TrayCallback,
+            _taskbarCreated,
+            PInvoke.WM_DISPLAYCHANGE,
+            PInvoke.WM_SETTINGCHANGE,
+            PInvoke.WM_POWERBROADCAST,
+            PInvoke.WM_ENDSESSION,
+            PInvoke.WM_CLOSE);
     }
 
     static HICON LoadTrayIcon(HINSTANCE hInstance, int cx, int cy)
