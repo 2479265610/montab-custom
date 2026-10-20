@@ -16,9 +16,6 @@ GetClientRect
 InvalidateRect
 UpdateWindow
 MessageBoxW
-MB_OK
-MB_ICONINFORMATION
-MB_TOPMOST
 SetForegroundWindow
 AttachThreadInput
 BringWindowToTop

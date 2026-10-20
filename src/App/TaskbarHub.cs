@@ -19,6 +19,7 @@ internal sealed unsafe class TaskbarHub
 {
     const string ClassName = "montab.hub";
     const int WaInactive = 0;
+    const uint WmActivate = 0x0006;
     static bool s_classRegistered;
 
     readonly PanelHost _host;
@@ -117,7 +118,7 @@ internal sealed unsafe class TaskbarHub
                 _hwnd = hwnd;
                 break;
 
-            case PInvoke.WM_ACTIVATE:
+            case WmActivate:
             {
                 // Клик по кнопке в панели задач разворачивает окно — сразу
                 // открываем настройки и снова сворачиваем, чтобы не держать фокус.
