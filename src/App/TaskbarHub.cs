@@ -25,6 +25,10 @@ internal sealed unsafe class TaskbarHub
     readonly PanelHost _host;
     HWND _hwnd;
 
+    // Пока окно только создаётся и сворачивается, система может прислать
+    // WM_ACTIVATE — такие «технические» активации игнорируем.
+    int _ignoreUntilTick;
+
     public TaskbarHub(PanelHost host) => _host = host;
 
     public HWND Handle => _hwnd;
@@ -46,6 +50,8 @@ internal sealed unsafe class TaskbarHub
             Debug.WriteLine("TaskbarHub: CreateWindowEx failed");
             return;
         }
+
+        _ignoreUntilTick = Environment.TickCount + 1200;
 
         // Полностью прозрачное: цвет ключа не нужен, альфа = 0
         PInvoke.SetLayeredWindowAttributes(_hwnd, new COLORREF(0), 0,
@@ -120,14 +126,15 @@ internal sealed unsafe class TaskbarHub
 
             case WmActivate:
             {
-                // Клик по кнопке в панели задач разворачивает окно — сразу
-                // открываем настройки и снова сворачиваем, чтобы не держать фокус.
+                // Клик по кнопке в панели задач = «убрать/вернуть панель»,
+                // ровно как левый клик по значку в трее. Страница настроек
+                // открывается только из меню — иначе она всплывала бы сама.
                 int action = (int)(wParam.Value & 0xFFFF);
-                if (action != WaInactive)
-                {
-                    _host.OpenSettingsFromTaskbar();
-                    PInvoke.ShowWindow(hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);
-                }
+                bool technical = unchecked(Environment.TickCount - _ignoreUntilTick) < 0;
+                if (action != WaInactive && !technical)
+                    _host.ToggleHidden();
+
+                PInvoke.ShowWindow(hwnd, SHOW_WINDOW_CMD.SW_MINIMIZE);
                 return new LRESULT(0);
             }
 

@@ -43,13 +43,6 @@ internal sealed unsafe class PanelHost
     public IReadOnlyList<DisplayInfo> Displays => _displays;
 
     /// <summary>Дисплей для страницы настроек, открытой из трея.</summary>
-    /// <summary>Клик по значку в панели задач — открыть страницу настроек.</summary>
-    public void OpenSettingsFromTaskbar()
-    {
-        string device = _panels.Values.Select(p => p.Device).FirstOrDefault() ?? PrimaryDevice;
-        OpenSettings(device);
-    }
-
     public string PrimaryDevice =>
         _displays.Count > 0 ? _displays[0].Device
         : _settings.Monitors.Count > 0 ? _settings.Monitors[0].Device : "";
