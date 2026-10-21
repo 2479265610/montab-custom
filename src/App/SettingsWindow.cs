@@ -162,6 +162,14 @@ internal sealed unsafe class SettingsWindow
 
         _rows.Add(new Row
         {
+            Label = "全屏播放时自动隐藏侧栏",
+            Kind = RowKind.Check,
+            Get = () => s.YieldToFullscreen ? 1 : 0,
+            Set = i => _host.UpdatePreferences(p => p.YieldToFullscreen = i == 1),
+        });
+
+        _rows.Add(new Row
+        {
             Label = "记忆桌面图标布局",
             Kind = RowKind.Check,
             Get = () => s.RememberIcons ? 1 : 0,

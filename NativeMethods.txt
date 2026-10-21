@@ -150,6 +150,9 @@ GetWindowPlacement
 GetPropW
 GetClassNameW
 DwmGetWindowAttribute
+IsZoomed
+GetDesktopWindow
+GetShellWindow
 EVENT_SYSTEM_FOREGROUND
 EVENT_SYSTEM_MINIMIZESTART
 EVENT_SYSTEM_MINIMIZEEND

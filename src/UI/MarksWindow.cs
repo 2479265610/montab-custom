@@ -67,6 +67,16 @@ internal sealed unsafe class MarksWindow
             PInvoke.DestroyWindow(_hwnd);
     }
 
+    /// <summary>
+    /// Скрыть оверлей. Owned-окно под SW_HIDE владельца не прячется само,
+    /// а его слои легли бы поверх полноэкранного видео в полосе панели.
+    /// </summary>
+    public void Hide()
+    {
+        if (_hwnd != default)
+            PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_HIDE);
+    }
+
     /// <summary>Оверлей накрывает клиентскую область панели один в один.</summary>
     public void Layout(RECT panelScreen)
     {

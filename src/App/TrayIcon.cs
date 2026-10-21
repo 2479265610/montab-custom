@@ -50,6 +50,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     const uint CmdMinAsCard = 60;
     const uint CmdHoverZoom = 61;
     const uint CmdScrollbar = 62;
+    const uint CmdYieldFullscreen = 63;
 
     static bool s_classRegistered;
 
@@ -420,6 +421,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                     CmdHoverZoom, "悬停放大预览");
                 PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.ShowScrollbar),
                     CmdScrollbar, "显示滚动条");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.YieldToFullscreen),
+                    CmdYieldFullscreen, "全屏播放时自动隐藏侧栏");
 
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_POPUP,
                     (nuint)behave.Value, "行为");
@@ -515,6 +518,9 @@ internal sealed unsafe class TrayIcon : IDisposable
                 break;
             case CmdScrollbar:
                 _host.UpdatePreferences(s => s.ShowScrollbar = !s.ShowScrollbar);
+                break;
+            case CmdYieldFullscreen:
+                _host.UpdatePreferences(s => s.YieldToFullscreen = !s.YieldToFullscreen);
                 break;
             default:
                 if (cmd >= CmdGlassBase && cmd < CmdGlassBase + GlassSteps.Length)

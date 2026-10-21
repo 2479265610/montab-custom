@@ -144,6 +144,16 @@ internal sealed unsafe class PanelHost
     /// </summary>
     public void ToggleHidden()
     {
+        // Панели есть, но их не видно только потому, что они уступили
+        // полноэкранному окну: клик должен вернуть их на экран, а не уйти
+        // в «скрыть всё» — иначе первое нажатие выглядело бы безрезультатным.
+        if (!_hidden && AllPanelsYielded())
+        {
+            foreach (var panel in _panels.Values)
+                panel.ForceShow();
+            return;
+        }
+
         // Нет ни одной включённой панели (пользователь всё выключил в меню,
         // либо это первый запуск): клик должен показать панели, а не крутить
         // «пусто» между нулём и нулём — иначе значок выглядит мёртвым.
@@ -158,6 +168,28 @@ internal sealed unsafe class PanelHost
 
         _hidden = !_hidden;
         RefreshDisplays();
+
+        // Возврат панелей — явное намерение пользователя: держим их поверх
+        // полноэкранного окна до конца этого полноэкранного режима, иначе
+        // собственный опрос спрятал бы их обратно через полсекунды.
+        if (!_hidden)
+        {
+            foreach (var panel in _panels.Values)
+                panel.ForceShow();
+        }
+    }
+
+    /// <summary>Все существующие панели уступили полноэкранному окну.</summary>
+    bool AllPanelsYielded()
+    {
+        if (_panels.Count == 0)
+            return false;
+        foreach (var panel in _panels.Values)
+        {
+            if (!panel.Yielded)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>Хоть один монитор помечен включённым.</summary>

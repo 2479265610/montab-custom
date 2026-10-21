@@ -34,6 +34,9 @@ internal sealed unsafe class PanelWindow
     /// <summary>Отложенное согласование с shell после отпускания края панели.</summary>
     const nuint ResizeSettleTimerId = 3;
     const int ResizeSettleDelayMs = 140;
+    /// <summary>Наблюдение за полноэкранными окнами на своём мониторе.</summary>
+    const nuint FullscreenWatchTimerId = 4;
+    const uint FullscreenWatchMs = 400;
     /// <summary>Окно ожидания второго клика по живому тайлу.</summary>
     const uint ClickDelayMs = 150;
     const uint HoverZoomDelayMs = 700;
@@ -72,6 +75,10 @@ internal sealed unsafe class PanelWindow
     bool _pointerNearby;
     bool _updatingPosition;
     bool _resizing;
+    /// <summary>Панель уступила место полноэкранному окну (убрана с экрана).</summary>
+    bool _yielded;
+    /// <summary>Пользователь явно вернул панель поверх полноэкранного окна.</summary>
+    bool _forcedOverFullscreen;
 
     // Предвычисленные размеры на текущий DPI
     uint _dpi = 96;
@@ -142,6 +149,13 @@ internal sealed unsafe class PanelWindow
         PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
 
         _thumbs = new ThumbnailManager(_hwnd);
+
+        // Полоса appbar'а сужает только рабочую область: полноэкранные окна её
+        // не читают и уходят под topmost-панель. Поэтому следим сами.
+        PInvoke.SetTimer(_hwnd, FullscreenWatchTimerId, FullscreenWatchMs, null);
+        // Панель могла создаваться уже при активном полноэкранном окне
+        // (возврат из трея) — не ждём первого тика, уступаем сразу.
+        SyncFullscreen();
     }
 
     static void EnsureClass(HINSTANCE hInstance)
@@ -287,12 +301,13 @@ internal sealed unsafe class PanelWindow
                     UpdatePosition();
                     break;
                 case PInvoke.ABN_FULLSCREENAPP:
-                    // Полноэкранное приложение: уходим вниз z-order, потом возвращаемся.
-                    bool fullscreen = lParam.Value != 0;
-                    PInvoke.SetWindowPos(_hwnd, fullscreen ? BottomAnchor : TopmostAnchor,
-                        0, 0, 0, 0,
-                        SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE |
-                        SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+                    // Полноэкранное приложение появилось/ушло по мнению shell.
+                    // Доверяем только «появилось»: shell не всегда присылает
+                    // парное уведомление, а «ушло» проверит наш собственный опрос.
+                    if (lParam.Value != 0 && _host.Settings.YieldToFullscreen)
+                        YieldToFullscreen();
+                    else
+                        SyncFullscreen();
                     break;
             }
             return new LRESULT(0);
@@ -471,6 +486,10 @@ internal sealed unsafe class PanelWindow
                     PInvoke.KillTimer(hwnd, ResizeSettleTimerId);
                     UpdatePosition();
                 }
+                else if (wParam.Value == FullscreenWatchTimerId)
+                {
+                    SyncFullscreen();
+                }
                 break;
 
             case PInvoke.WM_MOUSELEAVE:
@@ -512,6 +531,7 @@ internal sealed unsafe class PanelWindow
                 return new LRESULT(0);
 
             case PInvoke.WM_DESTROY:
+                PInvoke.KillTimer(hwnd, FullscreenWatchTimerId);
                 _scrollbar?.Destroy();
                 _thumbs?.Dispose();
                 _renderer.Dispose();
@@ -522,6 +542,96 @@ internal sealed unsafe class PanelWindow
 
         return PInvoke.DefWindowProc(hwnd, msg, wParam, lParam);
     }
+
+    #region Полноэкранный режим
+
+    /// <summary>
+    /// Опрос: на мониторе появилось/исчезло полноэкранное окно — уступить или вернуться.
+    /// Отдельный таймер нужен потому, что ABN_FULLSCREENAPP приходит не для всех
+    /// плееров (Chromium, MPV, игры) и не всегда парой.
+    /// </summary>
+    void SyncFullscreen()
+    {
+        if (_hwnd == default)
+            return;
+
+        // Во время правки ширины и жестов по карточкам панель не прячем:
+        // она исчезла бы прямо из-под курсора.
+        if (_resizing || _press != PressState.None)
+            return;
+
+        // Пользователь может запретить уступать: тогда панель всегда сверху
+        if (!_host.Settings.YieldToFullscreen)
+        {
+            if (_yielded)
+            {
+                _yielded = false;
+                PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
+                UpdatePosition();
+            }
+            return;
+        }
+
+        if (!FullscreenDetector.TryFind(_display.Handle, out _))
+        {
+            // Полноэкранного окна нет — снимаем и «принудительный» режим,
+            // иначе панель не уступила бы следующему видео в этом же сеансе
+            _forcedOverFullscreen = false;
+            if (_yielded)
+            {
+                _yielded = false;
+                PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
+                // Layout слоёв и topmost вернёт заодно UpdatePosition
+                UpdatePosition();
+            }
+            return;
+        }
+
+        // Пользователь сам вызвал панель поверх видео — не выдёргиваем её из-под курсора
+        if (!_forcedOverFullscreen)
+            YieldToFullscreen();
+    }
+
+    /// <summary>
+    /// Уступить полноэкранному окну: панель скрывается, а не просто уезжает вниз
+    /// z-order. Опускание в HWND_BOTTOM не помогает — topmost-окно всё равно
+    /// остаётся выше любого не-topmost, и полоса продолжала бы висеть на видео.
+    /// </summary>
+    void YieldToFullscreen()
+    {
+        if (_hwnd == default || _yielded)
+            return;
+
+        _yielded = true;
+        _scrollbar?.UpdateVisibility(false);
+        CancelHoverZoom();
+        // Owned-слои (скроллбар, «ручки») под SW_HIDE владельца сами не прячутся
+        _marks?.Hide();
+        PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_HIDE);
+    }
+
+    /// <summary>
+    /// Явный вызов панели поверх полноэкранного окна (кнопка «показать» в трее).
+    /// Дальше опрос её не прячет — до конца текущего полноэкранного режима.
+    /// </summary>
+    public void ForceShow()
+    {
+        if (_hwnd == default)
+            return;
+
+        // «Не прятать до конца этого полноэкранного режима» ставим только когда
+        // полноэкранное окно действительно есть: иначе флаг пережил бы обычный
+        // показ из трея и панель не уступила бы следующему видео.
+        _forcedOverFullscreen = FullscreenDetector.TryFind(_display.Handle, out _);
+        _yielded = false;
+        PInvoke.ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE);
+        UpdatePosition();
+    }
+
+    /// <summary>Панель не на экране, потому что уступила полноэкранному окну.</summary>
+    public bool Yielded => _yielded;
+
+    #endregion
 
     #region Позиционирование
 
@@ -536,12 +646,27 @@ internal sealed unsafe class PanelWindow
             var rc = _appBar.SetPos(_mon.Edge, _display.Rect, PanelWidth());
             // MoveWindow недостаточно: бит WS_EX_TOPMOST может рассинхронизироваться
             // с фактической z-позицией — переутверждаем topmost при каждом размещении.
-            PInvoke.SetWindowPos(_hwnd, TopmostAnchor,
-                rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            // Пока панель уступает полноэкранному окну, z-order не трогаем:
+            // иначе она снова оказалась бы поверх видео.
+            if (_yielded)
+            {
+                PInvoke.SetWindowPos(_hwnd, default,
+                    rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
+                    SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
+            }
+            else
+            {
+                PInvoke.SetWindowPos(_hwnd, TopmostAnchor,
+                    rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
+                    SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            }
             SetDpi(PInvoke.GetDpiForWindow(_hwnd));
             _scrollbar?.Layout(rc, _dpi, _mon.Edge == DockEdge.Right, _headerPx);
-            _marks?.Layout(rc);
+            // Пока панель уступает полноэкранному окну, слои «ручек» не трогаем:
+            // MarksWindow.Layout() сам показывает своё окно и нарисовал бы косые
+            // поверх видео в полосе панели.
+            if (!_yielded)
+                _marks?.Layout(rc);
         }
         finally
         {
@@ -989,7 +1114,12 @@ internal sealed unsafe class PanelWindow
     public void Refresh()
     {
         if (_hwnd != default)
+        {
             PInvoke.InvalidateRect(_hwnd, null, true);
+            // Переключатель «уступать полноэкранным» должен сработать сразу,
+            // а не на следующем тике опроса
+            SyncFullscreen();
+        }
     }
 
     static bool s_elevationHintShown;

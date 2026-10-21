@@ -86,6 +86,12 @@ internal sealed class Settings
     /// <summary>Показывать полосу прокрутки.</summary>
     public bool ShowScrollbar { get; set; } = true;
 
+    /// <summary>
+    /// Уступать полноэкранным окнам: AppBar сужает только рабочую область,
+    /// а видео и игры во весь экран её не читают и уходят под панель.
+    /// </summary>
+    public bool YieldToFullscreen { get; set; } = true;
+
     /// <summary>Зафиксировать порядок карточек: перетаскивание его больше не меняет.</summary>
     public bool LockOrder { get; set; }
 
