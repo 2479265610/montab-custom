@@ -94,7 +94,7 @@ internal static unsafe class FullscreenDetector
         // Cloaked: приостановленные UWP и окна других виртуальных рабочих столов
         int cloaked = 0;
         PInvoke.DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_CLOAKED,
-            &cloaked, sizeof(int));
+            &cloaked, (uint)sizeof(int));
         if (cloaked != 0)
             return false;
 
@@ -131,7 +131,7 @@ internal static unsafe class FullscreenDetector
 
         RECT dwm = default;
         PInvoke.DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
-            &dwm, sizeof(RECT));
+            &dwm, (uint)sizeof(RECT));
         // При отказе DWM структура остаётся пустой — тогда годится GetWindowRect
         if (dwm.right > dwm.left && dwm.bottom > dwm.top)
             bounds = dwm;
