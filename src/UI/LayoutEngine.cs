@@ -111,14 +111,24 @@ internal sealed class LayoutEngine
         };
         int y = barBottom + _gap - scrollOffset;
 
-        // Высота «эталонной» карточки. Считаем её по пропорциям развёрнутого
-        // окна на этом мониторе: карточка шириной w изображает окно, а окно
-        // во весь экран имеет пропорции самого экрана. Отсюда высота w/aspect —
-        // столько же, сколько занимала карточка, когда окно было развёрнуто.
-        // Развёрнутое окно в 16:9 или 16:10 — обычное состояние, поэтому
-        // лента выглядит «как раньше», но длинные и вертикальные окна больше
-        // не растягивают её.
-        double refAspect = screenAspect > 0.1 ? screenAspect : 1.0 / FallbackPreviewAspect;
+        // Высота «эталонной» карточки. Карточка изображает развёрнутое окно,
+        // поэтому эталон — пропорции реально развёрнутого окна, а не монитора:
+        // развёрнутое окно занимает рабочую область, которая уже монитора
+        // (панель забирает полосу), и его пропорции отличаются от экранных.
+        // Берём первое попавшееся развёрнутое окно этой ленты; если таких нет —
+        // считаем по пропорциям монитора.
+        double refAspect = 0;
+        foreach (var item in items)
+        {
+            if (item.IsMaximized && item.Aspect > 0.2)
+            {
+                refAspect = item.Aspect;
+                break;
+            }
+        }
+        if (refAspect <= 0.1)
+            refAspect = screenAspect > 0.1 ? screenAspect : 1.0 / FallbackPreviewAspect;
+
         double refRatio = Math.Clamp(1.0 / refAspect, MinPreviewAspect, MaxPreviewAspect);
         int uniformPreview = Math.Max(Scale(24, dpi), (int)Math.Round(width * refRatio));
         int lastGrip = _corner;

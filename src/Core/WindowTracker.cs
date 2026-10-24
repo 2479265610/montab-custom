@@ -307,18 +307,23 @@ internal sealed unsafe class WindowTracker : IDisposable
         // У свёрнутого окна клиентская область — «иконик»-полоса ~160×28
         if (PInvoke.IsIconic(item.Hwnd))
             return false;
+
+        bool maximized = PInvoke.IsZoomed(item.Hwnd);
+        bool dirty = item.IsMaximized != maximized;
+        item.IsMaximized = maximized;
+
         if (!PInvoke.GetClientRect(item.Hwnd, out RECT rc))
-            return false;
+            return dirty;
         int w = rc.right - rc.left, h = rc.bottom - rc.top;
         if (w <= 0 || h <= 0)
-            return false;
+            return dirty;
 
         double aspect = (double)w / h;
         // Переходная геометрия разворачивания даёт дикие пропорции — игнорируем
         if (aspect is < 0.2 or > 4.5)
-            return false;
+            return dirty;
         if (Math.Abs(aspect - item.Aspect) < 0.01)
-            return false;
+            return dirty;
 
         item.Aspect = aspect;
         return true;
