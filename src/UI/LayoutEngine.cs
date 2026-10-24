@@ -19,18 +19,25 @@ internal sealed class LayoutEngine
     const int LabelHeightLogical = 22;
     const int GapLogical = 8;
     const int PaddingLogical = 10;
-    const int MinPreviewHeightLogical = 48;
     // Сторона зоны захвата «ручки» в левом нижнем углу карточки.
     public const int CornerLogical = 28;
     /// <summary>Высота кнопки «桌面» под ручкой.</summary>
     const int DesktopBarLogical = 30;
-    const double MaxPreviewHeightFactor = 1.6; // не выше 1.6 ширины (очень «портретные» окна)
+    /// <summary>
+    /// Высота превью в карточке. Фиксированная, а не по аспекту окна: иначе
+    /// длинное горизонтальное окно давало плоскую карточку, а вертикальное —
+    /// высокую, и лента «прыгала». Превью вписывается в этот прямоугольник
+    /// по центру (FitRect), поля заполняет подложка карточки.
+    /// Значение подобрано под типичное окно 16:9 при ширине карточки ~172:
+    /// такие карточки выглядят как раньше, а крайние случаи выравниваются.
+    /// </summary>
+    const int PreviewHeightLogical = 96;
 
     readonly List<LayoutItem> _result = [];
 
     // Предвычисленные размеры на текущий DPI
     uint _dpi;
-    int _header, _strip, _label, _gap, _padding, _minPreview, _desktopBar, _corner;
+    int _header, _strip, _label, _gap, _padding, _preview, _desktopBar, _corner;
 
     public int TotalHeight { get; private set; }
 
@@ -103,17 +110,15 @@ internal sealed class LayoutEngine
             }
             else
             {
-                double aspect = item.Aspect > 0.05 ? item.Aspect : 16.0 / 10.0;
-                int previewHeight = Math.Clamp(
-                    (int)Math.Round(width / aspect), _minPreview, (int)(width * MaxPreviewHeightFactor));
-
-                // Подпись сверху, превью под ней — до самого низа карточки.
+                // Высота фиксирована: карточки одинаковые независимо от того,
+                // какое окно за ними — длинное, квадратное или вертикальное.
+                // Аспект больше не участвует, превью впишется в этот блок по центру.
                 bounds = new RECT
                 {
                     left = left,
                     top = y,
                     right = left + width,
-                    bottom = y + _label + previewHeight,
+                    bottom = y + _label + _preview,
                 };
                 label = new RECT { left = left, top = y, right = left + width, bottom = y + _label };
                 preview = new RECT
@@ -143,7 +148,7 @@ internal sealed class LayoutEngine
         _label = Scale(LabelHeightLogical, dpi);
         _gap = Scale(GapLogical, dpi);
         _padding = Scale(PaddingLogical, dpi);
-        _minPreview = Scale(MinPreviewHeightLogical, dpi);
+        _preview = Scale(PreviewHeightLogical, dpi);
         _desktopBar = Scale(DesktopBarLogical, dpi);
         _corner = Scale(CornerLogical, dpi);
     }
