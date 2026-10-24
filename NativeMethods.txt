@@ -188,6 +188,10 @@ DrawTextW
 CreateFontW
 FrameRect
 
+// gdi: rounded rectangles for the button bar
+CreateRoundRectRgn
+SelectClipRgn
+
 // dwm thumbnails
 DwmRegisterThumbnail
 DwmUnregisterThumbnail

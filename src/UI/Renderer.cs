@@ -62,6 +62,8 @@ internal sealed unsafe class Renderer : IDisposable
     uint _dpi;
     HFONT _font;
     int _iconSize, _pad, _gripDot, _gripGap, _header, _thinBorder, _thickBorder;
+    /// <summary>Скругление кнопок под заголовком, уже с учётом DPI.</summary>
+    int _btnRadius;
 
     // Кеш backbuffer'а на текущий размер клиентской области
     HDC _memDc;
@@ -86,6 +88,24 @@ internal sealed unsafe class Renderer : IDisposable
     }
 
     public bool IsDark => _dark;
+
+    /// <summary>
+    /// Скругление кнопок под заголовком в логических пикселях. Значение из
+    /// настроек; физический размер пересчитывается под текущий DPI.
+    /// </summary>
+    public int ButtonRadius
+    {
+        get => _btnRadiusLogical;
+        set
+        {
+            if (_btnRadiusLogical == value)
+                return;
+            _btnRadiusLogical = value;
+            RescaleButtonRadius();
+        }
+    }
+
+    int _btnRadiusLogical = 4;
 
     public void Paint(HWND hwnd, IReadOnlyList<LayoutItem> layout, HWND activeWindow, uint dpi,
         WindowItem? hoverClose = null, WindowItem? dragged = null, RECT desktopBar = default,
@@ -147,7 +167,7 @@ internal sealed unsafe class Renderer : IDisposable
             // Кнопки рисуем последними: они всегда поверх прокручиваемой ленты,
             // то есть заголовок остаётся «замороженным».
             if (desktopBar.bottom > desktopBar.top)
-                DrawButton(desktopBar, "显示桌面", false);
+                DrawButton(desktopBar, "桌面", false);
             if (pinButton.bottom > pinButton.top)
                 DrawPinButton(pinButton, locked);
             if (gearButton.bottom > gearButton.top)
@@ -180,17 +200,8 @@ internal sealed unsafe class Renderer : IDisposable
     /// <summary>Кнопка с текстом над лентой.</summary>
     void DrawButton(RECT bar, string label, bool highlight)
     {
-        PInvoke.FillRect(_memDc, in bar, highlight ? _stripActiveBrush : _stripBrush);
-
-        var frame = bar;
-        for (int i = 0; i < _thinBorder; i++)
-        {
-            PInvoke.FrameRect(_memDc, in frame, highlight ? _accentBrush : _frameBrush);
-            frame.left++;
-            frame.top++;
-            frame.right--;
-            frame.bottom--;
-        }
+        FillButton(bar, highlight ? _stripActiveBrush : _stripBrush,
+            highlight ? _accentBrush : _frameBrush, _thinBorder);
 
         PInvoke.SetTextColor(_memDc, _textColor);
         var textRect = bar;
@@ -202,21 +213,73 @@ internal sealed unsafe class Renderer : IDisposable
         }
     }
 
-    /// <summary>Кнопка-«канцелярская кнопка»: фиксирует порядок карточек.</summary>
+    /// <summary>
+    /// Заливка кнопки фоном с рамкой. При нулевом радиусе — прежние
+    /// прямоугольники; иначе рамка строится как «залить цветом рамки, затем
+    /// залить фоном по внутреннему скруглённому контуру».
+    /// </summary>
+    void FillButton(RECT bar, HBRUSH fill, HBRUSH frame, int border)
+    {
+        if (_btnRadius <= 0)
+        {
+            PInvoke.FillRect(_memDc, in bar, fill);
+            var f = bar;
+            for (int i = 0; i < border; i++)
+            {
+                PInvoke.FrameRect(_memDc, in f, frame);
+                f.left++;
+                f.top++;
+                f.right--;
+                f.bottom--;
+            }
+            return;
+        }
+
+        // Внешний контур — цвет рамки
+        FillRound(bar, _btnRadius, frame);
+
+        // Внутренний контур — фон кнопки. Радиус уменьшаем на толщину рамки,
+        // иначе по внутреннему краю оставался бы цветной «пояс».
+        var body = new RECT
+        {
+            left = bar.left + border,
+            top = bar.top + border,
+            right = bar.right - border,
+            bottom = bar.bottom - border,
+        };
+        if (body.right > body.left && body.bottom > body.top)
+            FillRound(body, _btnRadius - border, fill);
+    }
+
+    /// <summary>Заливает прямоугольник со скруглёнными углами, обрезая вывод по региону.</summary>
+    void FillRound(RECT r, int radius, HBRUSH brush)
+    {
+        // Половина высоты превратила бы кнопку в «капсулу» без прямых участков
+        // сверху и снизу. 35% оставляют их читаемыми при любом DPI.
+        int height = r.bottom - r.top;
+        int limit = Math.Max(0, height * 35 / 100);
+        if (radius > limit)
+            radius = limit;
+
+        // CreateRoundRectRgn трактует правую/нижнюю границу как исключающую
+        HRGN region = PInvoke.CreateRoundRectRgn(
+            r.left, r.top, r.right + 1, r.bottom + 1, radius * 2, radius * 2);
+        if (region == default)
+        {
+            PInvoke.FillRect(_memDc, in r, brush);
+            return;
+        }
+
+        PInvoke.SelectClipRgn(_memDc, region);
+        PInvoke.FillRect(_memDc, in r, brush);
+        PInvoke.SelectClipRgn(_memDc, default);
+        PInvoke.DeleteObject((HGDIOBJ)region.Value);
+    }
+
     /// <summary>Кнопка настроек: три полоски — привычный значок «меню/настройки».</summary>
     void DrawGearButton(RECT bar)
     {
-        PInvoke.FillRect(_memDc, in bar, _stripBrush);
-
-        var frame = bar;
-        for (int i = 0; i < _thinBorder; i++)
-        {
-            PInvoke.FrameRect(_memDc, in frame, _frameBrush);
-            frame.left++;
-            frame.top++;
-            frame.right--;
-            frame.bottom--;
-        }
+        FillButton(bar, _stripBrush, _frameBrush, _thinBorder);
 
         int cx = (bar.left + bar.right) / 2;
         int cy = (bar.top + bar.bottom) / 2;
@@ -237,19 +300,11 @@ internal sealed unsafe class Renderer : IDisposable
         }
     }
 
+    /// <summary>Кнопка-«канцелярская кнопка»: фиксирует порядок карточек.</summary>
     void DrawPinButton(RECT bar, bool locked)
     {
-        PInvoke.FillRect(_memDc, in bar, locked ? _stripActiveBrush : _stripBrush);
-
-        var frame = bar;
-        for (int i = 0; i < _thinBorder; i++)
-        {
-            PInvoke.FrameRect(_memDc, in frame, locked ? _accentBrush : _frameBrush);
-            frame.left++;
-            frame.top++;
-            frame.right--;
-            frame.bottom--;
-        }
+        FillButton(bar, locked ? _stripActiveBrush : _stripBrush,
+            locked ? _accentBrush : _frameBrush, _thinBorder);
 
         // Значок кнопки: шляпка + ножка
         HBRUSH brush = locked ? _accentBrush : _frameBrush;
@@ -363,7 +418,15 @@ internal sealed unsafe class Renderer : IDisposable
             FONT_CLIP_PRECISION.CLIP_DEFAULT_PRECIS,
             FONT_QUALITY.CLEARTYPE_QUALITY,
             0, "Microsoft YaHei UI");
+
+        RescaleButtonRadius();
     }
+
+    /// <summary>Логический радиус — в физический под текущий DPI.</summary>
+    void RescaleButtonRadius()
+        => _btnRadius = _btnRadiusLogical <= 0
+            ? 0
+            : Math.Max(1, LayoutEngine.Scale(_btnRadiusLogical, _dpi == 0 ? 96u : _dpi));
 
     void EnsureBackbuffer(HDC hdc, int width, int height)
     {

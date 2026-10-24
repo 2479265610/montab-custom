@@ -30,12 +30,22 @@ internal sealed unsafe class SettingsWindow
 
     enum RowKind { Segments, Stepper, Check }
 
+    /// <summary>
+    /// Шаг настройки «радиус кнопок», в логических пикселях.
+    /// Предел задаёт <see cref="Settings.MaxButtonRadius"/>: высота кнопки — 30,
+    /// дальше скругление читается уже как «капсула», а не как кнопка.
+    /// </summary>
+    const int ButtonRadiusStep = 2;
+    static int ButtonRadiusMax => Settings.MaxButtonRadius;
+
     sealed class Row
     {
         public string Section = "";
         public string Label = "";
         public RowKind Kind;
         public string[] Options = [];
+        /// <summary>Единица справа от числа у Stepper.</summary>
+        public string Unit = " %";
         public Func<int> Get = () => 0;
         public Action<int> Set = _ => { };
     }
@@ -114,6 +124,16 @@ internal sealed unsafe class SettingsWindow
             Kind = RowKind.Stepper,
             Get = () => (int)Math.Round(s.For(_device).WidthPercent),
             Set = d => _host.SetWidth(_device, s.For(_device).WidthPercent + d),
+        });
+
+        _rows.Add(new Row
+        {
+            Label = "按钮圆角",
+            Kind = RowKind.Stepper,
+            Unit = " px",
+            Get = () => s.ButtonRadius,
+            Set = d => _host.UpdatePreferences(p =>
+                p.ButtonRadius = Math.Clamp(p.ButtonRadius + d * ButtonRadiusStep, 0, ButtonRadiusMax)),
         });
 
         _rows.Add(new Row
@@ -426,7 +446,7 @@ internal sealed unsafe class SettingsWindow
                 break;
 
             case RowKind.Stepper:
-                DrawStepper(hdc, ctrl, row.Get());
+                DrawStepper(hdc, ctrl, row.Get(), row.Unit);
                 break;
 
             case RowKind.Check:
@@ -459,7 +479,7 @@ internal sealed unsafe class SettingsWindow
         }
     }
 
-    void DrawStepper(HDC hdc, RECT ctrl, int value)
+    void DrawStepper(HDC hdc, RECT ctrl, int value, string suffix = " %")
     {
         int btn = Scale(38);
         int gap = Scale(4);
@@ -476,7 +496,7 @@ internal sealed unsafe class SettingsWindow
         Frame(hdc, plus, _frame);
         Text(hdc, plus, "+", _text, DRAW_TEXT_FORMAT.DT_CENTER, false);
 
-        Text(hdc, mid, value + " %", _text, DRAW_TEXT_FORMAT.DT_CENTER, false);
+        Text(hdc, mid, value + suffix, _text, DRAW_TEXT_FORMAT.DT_CENTER, false);
     }
 
     void DrawCheck(HDC hdc, RECT rowRect, RECT ctrl, bool on)

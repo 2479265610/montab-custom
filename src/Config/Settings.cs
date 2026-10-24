@@ -99,6 +99,25 @@ internal sealed class Settings
     /// </summary>
     public bool StartInTray { get; set; } = true;
 
+    /// <summary>
+    /// Скругление кнопок «桌面 / закрепить / настройки» под заголовком, в логических
+    /// пикселях. 0 — обычные прямоугольники, как было до появления настройки.
+    /// Значение ограничивается при записи: файл настроек правят и руками.
+    /// </summary>
+    public int ButtonRadius
+    {
+        get => _buttonRadius;
+        set => _buttonRadius = Math.Clamp(value, 0, MaxButtonRadius);
+    }
+
+    int _buttonRadius = 4;
+
+    /// <summary>
+    /// Предел скругления в логических пикселях. Кнопка — 30 логических в высоту,
+    /// полувысота 15 дала бы «капсулу», поэтому останавливаемся на 8.
+    /// </summary>
+    public const int MaxButtonRadius = 8;
+
     /// <summary>Зафиксировать порядок карточек: перетаскивание его больше не меняет.</summary>
     public bool LockOrder { get; set; }
 

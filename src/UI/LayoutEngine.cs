@@ -22,7 +22,7 @@ internal sealed class LayoutEngine
     const int MinPreviewHeightLogical = 48;
     // Сторона зоны захвата «ручки» в левом нижнем углу карточки.
     public const int CornerLogical = 28;
-    /// <summary>Высота кнопки «Показать рабочий стол» под ручкой.</summary>
+    /// <summary>Высота кнопки «桌面» под ручкой.</summary>
     const int DesktopBarLogical = 30;
     const double MaxPreviewHeightFactor = 1.6; // не выше 1.6 ширины (очень «портретные» окна)
 
@@ -37,7 +37,7 @@ internal sealed class LayoutEngine
     /// <summary>Сторона квадратной «ручки» в правом нижнем углу карточки.</summary>
     public int GripSize => _corner;
 
-    /// <summary>Область кнопки «Показать рабочий стол» в клиентских координатах.</summary>
+    /// <summary>Область кнопки «桌面» в клиентских координатах.</summary>
     public RECT DesktopBar { get; private set; }
 
     /// <summary>Область кнопки-кнопки «закрепить порядок» справа от неё.</summary>
@@ -61,7 +61,7 @@ internal sealed class LayoutEngine
         int barBottom = barTop + _desktopBar;
         int barRight = client.right - _padding;
 
-        // Слева — «Показать рабочий стол», справа — фиксация порядка и кнопка настроек.
+        // Слева — «桌面», справа — фиксация порядка и кнопка настроек.
         int span = barRight - left;
         int btn = Math.Max(Scale(22, dpi), Math.Min((int)(_desktopBar * 1.15), (span - 2 * _gap) / 4));
         int split = Math.Max(left + _desktopBar, barRight - 2 * btn - 2 * _gap);

@@ -135,6 +135,7 @@ internal sealed unsafe class PanelWindow
             throw new InvalidOperationException("CreateWindowExW failed");
 
         SetDpi(PInvoke.GetDpiForWindow(_hwnd));
+        _renderer.ButtonRadius = _host.Settings.ButtonRadius;
         _renderer.ApplyTheme(_host.Settings.Theme == ThemeMode.Dark);
         ApplyGlass();
         _scrollbar = new ScrollBarWindow(this, _hwnd, hInstance);
@@ -812,7 +813,7 @@ internal sealed unsafe class PanelWindow
         _pressGrip = false;
 
         // Кнопки над лентой. Раньше они попадали в ветку «перетаскивание панели»
-        // (HitTest там пустой), поэтому клик по «Показать рабочий стол» не срабатывал.
+        // (HitTest там пустой), поэтому клик по «桌面» не срабатывал.
         if (Inside(_layout.PinButton, x, y))
         {
             _host.UpdatePreferences(s => s.LockOrder = !s.LockOrder);
@@ -1115,6 +1116,8 @@ internal sealed unsafe class PanelWindow
     {
         if (_hwnd != default)
         {
+            // Скругление кнопок меняется из настроек — подхватываем до перерисовки
+            _renderer.ButtonRadius = _host.Settings.ButtonRadius;
             PInvoke.InvalidateRect(_hwnd, null, true);
             // Переключатель «уступать полноэкранным» должен сработать сразу,
             // а не на следующем тике опроса
@@ -1180,7 +1183,7 @@ internal sealed unsafe class PanelWindow
 
     void OnClick(int x, int y, bool ctrl)
     {
-        // Кнопка «Показать рабочий стол» — сворачивает все окна.
+        // Кнопка «桌面» — сворачивает все окна.
         if (Inside(_layout.DesktopBar, x, y))
         {
             ShowDesktop();
