@@ -51,6 +51,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     const uint CmdHoverZoom = 61;
     const uint CmdScrollbar = 62;
     const uint CmdYieldFullscreen = 63;
+    const uint CmdStartInTray = 64;
 
     static bool s_classRegistered;
 
@@ -61,6 +62,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     HICON _icon;         // цветная: панели на экранах
     HICON _iconHidden;   // приглушённая: панели скрыты
     bool _showingHidden;
+    Action? _onActivate;
 
     public TrayIcon(PanelHost host, HINSTANCE hInstance)
     {
@@ -111,6 +113,7 @@ internal sealed unsafe class TrayIcon : IDisposable
     {
         MessageFilter.Allow(hwnd,
             TrayCallback,
+            Instance.ActivateMessage,
             _taskbarCreated,
             PInvoke.WM_DISPLAYCHANGE,
             PInvoke.WM_SETTINGCHANGE,
@@ -118,6 +121,9 @@ internal sealed unsafe class TrayIcon : IDisposable
             PInvoke.WM_ENDSESSION,
             PInvoke.WM_CLOSE);
     }
+
+    /// <summary>Обработчик «покажи панели» от второго экземпляра.</summary>
+    public void ListenActivation(Action onActivate) => _onActivate = onActivate;
 
     static HICON LoadTrayIcon(HINSTANCE hInstance, int cx, int cy)
     {
@@ -275,6 +281,12 @@ internal sealed unsafe class TrayIcon : IDisposable
 
     LRESULT HandleMessage(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam)
     {
+        if (msg == Instance.ActivateMessage)
+        {
+            _onActivate?.Invoke();
+            return new LRESULT(0);
+        }
+
         if (msg == _taskbarCreated)
         {
             Add();
@@ -423,6 +435,8 @@ internal sealed unsafe class TrayIcon : IDisposable
                     CmdScrollbar, "显示滚动条");
                 PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.YieldToFullscreen),
                     CmdYieldFullscreen, "全屏播放时自动隐藏侧栏");
+                PInvoke.AppendMenu(behave, Check(MENU_ITEM_FLAGS.MF_STRING, _host.Settings.StartInTray),
+                    CmdStartInTray, "开机自启时只在后台运行");
 
                 PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING | MENU_ITEM_FLAGS.MF_POPUP,
                     (nuint)behave.Value, "行为");
@@ -521,6 +535,9 @@ internal sealed unsafe class TrayIcon : IDisposable
                 break;
             case CmdYieldFullscreen:
                 _host.UpdatePreferences(s => s.YieldToFullscreen = !s.YieldToFullscreen);
+                break;
+            case CmdStartInTray:
+                _host.UpdatePreferences(s => s.StartInTray = !s.StartInTray);
                 break;
             default:
                 if (cmd >= CmdGlassBase && cmd < CmdGlassBase + GlassSteps.Length)

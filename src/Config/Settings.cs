@@ -92,6 +92,13 @@ internal sealed class Settings
     /// </summary>
     public bool YieldToFullscreen { get; set; } = true;
 
+    /// <summary>
+    /// Запуск из автозагрузки не показывает полосы — приложение ждёт в трее.
+    /// Полосу включают кликом по значку, когда она действительно нужна.
+    /// Ручной запуск (двойной клик по exe) это не затрагивает.
+    /// </summary>
+    public bool StartInTray { get; set; } = true;
+
     /// <summary>Зафиксировать порядок карточек: перетаскивание его больше не меняет.</summary>
     public bool LockOrder { get; set; }
 

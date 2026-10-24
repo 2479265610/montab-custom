@@ -49,10 +49,14 @@ internal sealed unsafe class PanelHost
     /// <summary>Все панели временно скрыты (левый клик по иконке в трее).</summary>
     public bool Hidden => _hidden;
 
-    public void Start()
+    public void Start(bool startInTray)
     {
         _tray = new TrayIcon(this, _hInstance);
         _icons = new IconLayoutKeeper(_settings);
+
+        // Запуск из автозагрузки: полос не создаём, приложение только ждёт в трее.
+        // Окна не трогаем — раскладка значков рабочего стола тоже остаётся как есть.
+        _hidden = startInTray;
 
         _tracker.Changed += OnTrackerChanged;
         _tracker.ForegroundChanged += _switch.OnForegroundChanged;
@@ -154,29 +158,7 @@ internal sealed unsafe class PanelHost
             return;
         }
 
-        // Нет ни одной включённой панели (пользователь всё выключил в меню,
-        // либо это первый запуск): клик должен показать панели, а не крутить
-        // «пусто» между нулём и нулём — иначе значок выглядит мёртвым.
-        if (!AnyEnabled())
-        {
-            _hidden = false;
-            EnableAllFromTray();
-            _settings.Save();
-            RefreshDisplays();
-            return;
-        }
-
-        _hidden = !_hidden;
-        RefreshDisplays();
-
-        // Возврат панелей — явное намерение пользователя: держим их поверх
-        // полноэкранного окна до конца этого полноэкранного режима, иначе
-        // собственный опрос спрятал бы их обратно через полсекунды.
-        if (!_hidden)
-        {
-            foreach (var panel in _panels.Values)
-                panel.ForceShow();
-        }
+        SetHidden(!_hidden);
     }
 
     /// <summary>Все существующие панели уступили полноэкранному окну.</summary>
@@ -190,6 +172,53 @@ internal sealed unsafe class PanelHost
                 return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Слушает ручной запуск второго экземпляра: он просит показать панели
+    /// (обычный случай — приложение висит в трее после автозагрузки, а
+    /// пользователь открыл exe, чтобы начать работу).
+    /// </summary>
+    public void ListenForActivation()
+    {
+        _tray?.ListenActivation(() => SetHidden(false));
+    }
+
+    /// <summary>Показать или убрать панели. Повторный вызов идемпотентен.</summary>
+    public void SetHidden(bool hidden)
+    {
+        // Уже в нужном состоянии. Но показанные панели могли уступить
+        // полноэкранному окну — тогда явный вызов должен вернуть их наверх.
+        if (_hidden == hidden)
+        {
+            if (!hidden)
+            {
+                foreach (var panel in _panels.Values)
+                    panel.ForceShow();
+            }
+            return;
+        }
+
+        // Ни одной включённой панели: показывать нечего, включаем все.
+        // Иначе значок выглядел бы «мёртвым», а экран — пустым.
+        if (!hidden && !AnyEnabled())
+            EnableAllFromTray();
+
+        _hidden = hidden;
+        // EnableAllFromTray меняет настройки мониторов — сохраняем их вместе
+        // с состоянием «скрыто». Само _hidden в файл не пишется намеренно:
+        // после перезапуска полосы должны появиться, если запуск ручной.
+        _settings.Save();
+        RefreshDisplays();
+
+        // Возврат панелей — явное намерение пользователя: держим их поверх
+        // полноэкранного окна до конца этого полноэкранного режима, иначе
+        // собственный опрос спрятал бы их обратно через полсекунды.
+        if (!hidden)
+        {
+            foreach (var panel in _panels.Values)
+                panel.ForceShow();
+        }
     }
 
     /// <summary>Хоть один монитор помечен включённым.</summary>

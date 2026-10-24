@@ -170,6 +170,23 @@ internal sealed unsafe class SettingsWindow
 
         _rows.Add(new Row
         {
+            Section = "启动",
+            Label = "开机自启时只在后台运行",
+            Kind = RowKind.Check,
+            Get = () => s.StartInTray ? 1 : 0,
+            Set = i => _host.UpdatePreferences(p => p.StartInTray = i == 1),
+        });
+
+        _rows.Add(new Row
+        {
+            Label = "开机自动启动",
+            Kind = RowKind.Check,
+            Get = () => Autostart.IsEnabled() ? 1 : 0,
+            Set = _ => Autostart.Toggle(),
+        });
+
+        _rows.Add(new Row
+        {
             Label = "记忆桌面图标布局",
             Kind = RowKind.Check,
             Get = () => s.RememberIcons ? 1 : 0,
