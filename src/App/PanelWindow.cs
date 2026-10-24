@@ -118,6 +118,20 @@ internal sealed unsafe class PanelWindow
 
     public HMONITOR Monitor => _display.Handle;
 
+    /// <summary>
+    /// Пропорции монитора (ширина/высота). По ним считается высота карточки:
+    /// карточка изображает развёрнутое окно, а оно занимает весь экран целиком.
+    /// </summary>
+    double ScreenAspect
+    {
+        get
+        {
+            int w = _display.Rect.right - _display.Rect.left;
+            int h = _display.Rect.bottom - _display.Rect.top;
+            return w > 0 && h > 0 ? (double)w / h : 16.0 / 9.0;
+        }
+    }
+
     public void Create(HINSTANCE hInstance, DisplayInfo display)
     {
         _display = display;
@@ -136,6 +150,7 @@ internal sealed unsafe class PanelWindow
 
         SetDpi(PInvoke.GetDpiForWindow(_hwnd));
         _renderer.ButtonRadius = _host.Settings.ButtonRadius;
+        _renderer.PadWithCardColor = _host.Settings.PreviewPadding == PreviewPad.White;
         _renderer.ApplyTheme(_host.Settings.Theme == ThemeMode.Dark);
         ApplyGlass();
         _scrollbar = new ScrollBarWindow(this, _hwnd, hInstance);
@@ -323,13 +338,13 @@ internal sealed unsafe class PanelWindow
             case PInvoke.WM_PAINT:
                 PInvoke.GetClientRect(hwnd, out RECT client);
                 _layoutItems = _layout.Compute(CollectMine(), client, _dpi, _scrollOffset,
-                    _host.Settings.MinimizedAsCard);
+                    _host.Settings.MinimizedAsCard, ScreenAspect, _host.Settings.UniformCardSize);
                 int maxScroll = Math.Max(0, _layout.TotalHeight - (client.bottom - client.top));
                 if (_scrollOffset > maxScroll)
                 {
                     _scrollOffset = maxScroll;
                     _layoutItems = _layout.Compute(_mine, client, _dpi, _scrollOffset,
-                        _host.Settings.MinimizedAsCard);
+                        _host.Settings.MinimizedAsCard, ScreenAspect, _host.Settings.UniformCardSize);
                 }
                 _thumbs?.Sync(_layoutItems, client, _tracker.ForegroundWindow, _layout.DesktopBar.bottom);
                 // «Взятая» карточка подсвечивается сразу по нажатию на ручку —
@@ -1118,6 +1133,7 @@ internal sealed unsafe class PanelWindow
         {
             // Скругление кнопок меняется из настроек — подхватываем до перерисовки
             _renderer.ButtonRadius = _host.Settings.ButtonRadius;
+            _renderer.PadWithCardColor = _host.Settings.PreviewPadding == PreviewPad.White;
             PInvoke.InvalidateRect(_hwnd, null, true);
             // Переключатель «уступать полноэкранным» должен сработать сразу,
             // а не на следующем тике опроса

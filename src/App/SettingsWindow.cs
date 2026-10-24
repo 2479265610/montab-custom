@@ -75,6 +75,8 @@ internal sealed unsafe class SettingsWindow
     bool _dragging;
     int _dragDx, _dragDy;
     bool _closeHover;
+    /// <summary>Прокрутка страницы настроек: смещение содержимого и её предел.</summary>
+    int _scrollOffset, _scrollMax;
 
     public SettingsWindow(PanelHost host, string device)
     {
@@ -134,6 +136,25 @@ internal sealed unsafe class SettingsWindow
             Get = () => s.ButtonRadius,
             Set = d => _host.UpdatePreferences(p =>
                 p.ButtonRadius = Math.Clamp(p.ButtonRadius + d * ButtonRadiusStep, 0, ButtonRadiusMax)),
+        });
+
+        _rows.Add(new Row
+        {
+            Label = "卡片尺寸跟随窗口",
+            Kind = RowKind.Segments,
+            Options = ["统一大小", "跟随窗口"],
+            Get = () => s.UniformCardSize ? 0 : 1,
+            Set = i => _host.UpdatePreferences(p => p.UniformCardSize = i == 0),
+        });
+
+        _rows.Add(new Row
+        {
+            Label = "预览留白",
+            Kind = RowKind.Segments,
+            Options = ["留灰", "留白"],
+            Get = () => s.PreviewPadding == PreviewPad.White ? 1 : 0,
+            Set = i => _host.UpdatePreferences(p =>
+                p.PreviewPadding = i == 1 ? PreviewPad.White : PreviewPad.Panel),
         });
 
         _rows.Add(new Row
@@ -258,6 +279,15 @@ internal sealed unsafe class SettingsWindow
             ? mi.rcWork
             : new RECT { left = 0, top = 0, right = 1920, bottom = 1080 };
 
+        // Строк настроек много, и на ноутбуке с крупным масштабом (125–175%)
+        // страница выше рабочей области. Обрезаем окно по высоте и включаем
+        // прокрутку колесом: иначе нижние строки просто недоступны.
+        int maxHeight = work.bottom - work.top - Scale(16);
+        int fullHeight = height;
+        height = Math.Min(height, maxHeight);
+        _scrollMax = Math.Max(0, fullHeight - height);
+        _scrollOffset = Math.Min(_scrollOffset, _scrollMax);
+
         int x = work.left + (work.right - work.left - width) / 2;
         int y = work.top + (work.bottom - work.top - height) / 3;
 
@@ -365,7 +395,14 @@ internal sealed unsafe class SettingsWindow
             var line = new RECT { left = 0, top = head.bottom - Scale(1), right = client.right, bottom = head.bottom };
             PInvoke.FillRect(hdc, in line, _frame);
 
-            int y = head.bottom;
+            // Прокрутка: содержимое рисуем только между шапкой и нижней подсказкой.
+            // Клип обязателен — иначе строка, попавшая на границу, нарисуется
+            // поверх «замороженной» шапки.
+            HRGN clipRgn = PInvoke.CreateRectRgn(
+                client.left, head.bottom, client.right, client.bottom);
+            PInvoke.SelectClipRgn(hdc, clipRgn);
+
+            int y = head.bottom - _scrollOffset;
             foreach (var row in _rows)
             {
                 if (row.Section.Length > 0)
@@ -382,9 +419,13 @@ internal sealed unsafe class SettingsWindow
                 }
 
                 var rowRect = RowRect(client, y);
-                DrawRow(hdc, row, rowRect, client);
+                if (rowRect.bottom > head.bottom && rowRect.top < client.bottom)
+                    DrawRow(hdc, row, rowRect, client);
                 y = rowRect.bottom;
             }
+
+            PInvoke.SelectClipRgn(hdc, default);
+            PInvoke.DeleteObject((HGDIOBJ)clipRgn.Value);
 
             // Нижняя подсказка
             var hint = new RECT
@@ -568,7 +609,7 @@ internal sealed unsafe class SettingsWindow
             return;
         }
 
-        int top = Scale(HeaderLogical);
+        int top = Scale(HeaderLogical) - _scrollOffset;
         foreach (var row in _rows)
         {
             if (row.Section.Length > 0)
@@ -579,6 +620,9 @@ internal sealed unsafe class SettingsWindow
 
             if (y < rowRect.top || y >= rowRect.bottom)
                 continue;
+            // Клик по строке, уехавшей под заголовок, не должен срабатывать
+            if (y < Scale(HeaderLogical))
+                return;
 
             var ctrl = CtrlRect(rowRect);
             if (row.Kind == RowKind.Check)
@@ -709,6 +753,19 @@ internal sealed unsafe class SettingsWindow
                     _dragging = false;
                     PInvoke.ReleaseCapture();
                     return new LRESULT(0);
+                }
+                return new LRESULT(0);
+
+            case PInvoke.WM_MOUSEWHEEL:
+                if (_scrollMax > 0)
+                {
+                    int delta = (short)((wParam.Value >> 16) & 0xFFFF);
+                    int next = Math.Clamp(_scrollOffset - delta * Scale(44) / 120, 0, _scrollMax);
+                    if (next != _scrollOffset)
+                    {
+                        _scrollOffset = next;
+                        PInvoke.InvalidateRect(hwnd, null, false);
+                    }
                 }
                 return new LRESULT(0);
 

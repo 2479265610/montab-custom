@@ -147,6 +147,11 @@ internal sealed unsafe class MarksWindow
                     continue;
 
                 int len = Math.Min(length, Math.Max(8, (li.Bounds.right - li.Bounds.left) / 5));
+                // Карточка может быть совсем низкой (единый размер по пропорциям
+                // экрана) — косая не должна вылезать за её высоту, иначе ручка
+                // перечеркнёт всё превью.
+                int maxByHeight = Math.Max(6, (li.Bounds.bottom - li.Bounds.top) / 3);
+                len = Math.Min(len, maxByHeight);
                 // Короткая косая — примерно половина длинной. Разница длин даёт
                 // зазор по нормали (Δ/√2), и он должен быть больше толщины штриха,
                 // иначе пара сливается в одну линию с зазубриной.

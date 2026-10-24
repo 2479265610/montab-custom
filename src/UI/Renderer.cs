@@ -87,6 +87,13 @@ internal sealed unsafe class Renderer : IDisposable
         _gripLockedColor = dark ? D_GripLocked : L_GripLocked;
     }
 
+    /// <summary>
+    /// Заливать поля вокруг вписанного превью цветом тела карточки, а не фоном
+    /// панели. Включено — длинное окно выглядит как картинка в белой рамке;
+    /// выключено — поля сливаются с панелью, и карточка читается как рамка.
+    /// </summary>
+    public bool PadWithCardColor { get; set; }
+
     public bool IsDark => _dark;
 
     /// <summary>
@@ -140,7 +147,19 @@ internal sealed unsafe class Renderer : IDisposable
                 bool isActive = li.Window.Hwnd == activeWindow;
                 bool isDragged = li.Window == dragged;
                 if (!li.IsStrip)
+                {
+                    // Поля вокруг превью: длинное окно вписывается мельче, и сверху
+                    // с снизу остаются полосы. По настройке заливаем их цветом тела
+                    // карточки — тогда карточка выглядит цельной, а не «рамкой с
+                    // висящей внутри картинкой». Превью DWM рисует поверх, поэтому
+                    // заливка под ним не видна и ничего не перекрывает.
+                    if (PadWithCardColor && li.Preview.bottom > li.Preview.top)
+                    {
+                        var body = li.Preview;
+                        PInvoke.FillRect(_memDc, in body, isActive ? _stripActiveBrush : _stripBrush);
+                    }
                     DrawOutline(li.Bounds, isActive ? _accentBrush : _frameBrush, isActive ? _thickBorder : _thinBorder);
+                }
                 if (isDragged)
                     DrawOutline(li.Bounds, _dragFrameBrush, _thickBorder);
                 DrawLabel(li, isActive, li.Window == hoverClose, isDragged, li.Window == hoverGrip, locked);

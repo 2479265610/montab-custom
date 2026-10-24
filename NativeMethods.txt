@@ -192,6 +192,9 @@ FrameRect
 CreateRoundRectRgn
 SelectClipRgn
 
+// gdi: clipping the scrollable settings page
+CreateRectRgn
+
 // dwm thumbnails
 DwmRegisterThumbnail
 DwmUnregisterThumbnail
