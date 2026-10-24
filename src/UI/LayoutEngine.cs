@@ -204,8 +204,21 @@ internal sealed class LayoutEngine
     /// </summary>
     public static RECT FitRect(RECT cell, double aspect)
     {
-        int cellW = cell.right - cell.left;
-        int cellH = cell.bottom - cell.top;
+        // Превью ужимаем на внутренний отступ: иначе при совпадении пропорций
+        // (а это частый случай — окно 16:9 в карточке 16:9) миниатюра упирается
+        // в рамку карточки, и поля по краям не читаются вовсе. Небольшой зазор
+        // делает карточку похожей на «фото в паспарту».
+        int inset = Math.Max(1, (int)Math.Round((cell.bottom - cell.top) * 0.04));
+        var inner = new RECT
+        {
+            left = cell.left + inset,
+            top = cell.top + inset,
+            right = cell.right - inset,
+            bottom = cell.bottom - inset,
+        };
+
+        int cellW = inner.right - inner.left;
+        int cellH = inner.bottom - inner.top;
         if (cellW <= 0 || cellH <= 0 || aspect <= 0)
             return cell;
 
@@ -216,8 +229,8 @@ internal sealed class LayoutEngine
             w = (int)Math.Round(cellH * aspect);
         }
 
-        int x = cell.left + (cellW - w) / 2;
-        int y = cell.top + (cellH - h) / 2;
+        int x = inner.left + (cellW - w) / 2;
+        int y = inner.top + (cellH - h) / 2;
         return new RECT { left = x, top = y, right = x + w, bottom = y + h };
     }
 
