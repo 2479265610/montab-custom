@@ -21,6 +21,29 @@ internal sealed unsafe class MarksWindow
 {
     const string ClassName = "montab.marks";
 
+    /// <summary>
+    /// Цвет «ручки»: спокойный серый. Средняя светлота держит штрих читаемым
+    /// и на белом окне, и на тёмном превью, и на пёстром, не превращая его
+    /// в чёрную черту.
+    /// </summary>
+    static readonly uint GreyArgb = PremulGrey(0x90, 0x46);
+    /// <summary>Под курсором/при перетаскивании — акцент, полностью непрозрачный.</summary>
+    static readonly uint HotArgb = Premul(0xFF, 0x0A, 0x84, 0xFF);
+
+    /// <summary>
+    /// Собрать пиксель в том виде, который ждёт UpdateLayeredWindow:
+    /// альфа в старшем байте, каналы — <b>уже умноженные на альфу</b>.
+    /// Без предумножения окно складывает цвет с фоном аддитивно, и полупрозрачный
+    /// серый выходит светлее задуманного — белая подложка «съедала» штрих.
+    /// </summary>
+    static uint Premul(byte alpha, byte r, byte g, byte b) => (uint)alpha << 24
+        | (uint)(r * alpha / 255) << 16
+        | (uint)(g * alpha / 255) << 8
+        | (uint)(b * alpha / 255);
+
+    /// <summary>Тот же серый по всем трём каналам.</summary>
+    static uint PremulGrey(byte alpha, byte grey) => Premul(alpha, grey, grey, grey);
+
     static bool s_classRegistered;
 
     readonly HWND _owner;
@@ -111,13 +134,10 @@ internal sealed unsafe class MarksWindow
         // Порядок зафиксирован — ручек не рисуем вовсе
         if (!locked)
         {
-            int length = LayoutEngine.Scale(10, dpi);
-            int gap = LayoutEngine.Scale(3, dpi);
-            int inset = LayoutEngine.Scale(2, dpi);
+            int length = LayoutEngine.Scale(12, dpi);
             int thick = Math.Max(2, LayoutEngine.Scale(2, dpi));
-            // Чёрные на светлом, белые на тёмном — по-настоящему контрастные
-            uint basePixel = dark ? 0xFFF2F2F2 : 0xFF000000;
-            uint hotPixel = 0xFFFF840A; // #0A84FF в BGRA
+            uint pixel = GreyArgb;
+            uint hotPixel = HotArgb;
 
             foreach (var li in layout)
             {
@@ -126,15 +146,33 @@ internal sealed unsafe class MarksWindow
                 if (li.Bounds.bottom <= client.top + 2 || li.Bounds.top >= client.bottom - 2)
                     continue;
 
-                int x = li.Bounds.left + inset;
-                int y = li.Bounds.bottom - inset;
-                int len = Math.Min(length, Math.Max(5, (li.Bounds.right - li.Bounds.left) / 6));
-                uint pixel = li.Window == active ? hotPixel : basePixel;
+                int len = Math.Min(length, Math.Max(8, (li.Bounds.right - li.Bounds.left) / 5));
+                // Короткая косая — примерно половина длинной. Разница длин даёт
+                // зазор по нормали (Δ/√2), и он должен быть больше толщины штриха,
+                // иначе пара сливается в одну линию с зазубриной.
+                int shortLen = Math.Max(4, len / 2);
+                uint color = li.Window == active ? hotPixel : pixel;
 
-                // Верхняя косая: от левого края вниз к нижнему — вместе с углом треугольник
-                Line(x, y - len, x + len, y, thick, pixel);
-                // Параллельная ей, со сдвигом вправо
-                Line(x + gap, y - len, x + len + gap, y, thick, pixel);
+                // Обе косые — гипотенузы прямоугольных треугольников, у которых
+                // катеты лежат на левой и нижней рамках карточки. Концы упираются
+                // ровно в рамку, поэтому каждая черта вместе с двумя сторонами
+                // рамки замыкает треугольник. Длинная отсекает большой угол,
+                // короткая рисует такой же треугольник внутри него — читается
+                // как «большой треугольник с чертой посередине».
+                //
+                // Рамка лежит снаружи Bounds (DrawOutline расширяет её наружу),
+                // поэтому первая внутренняя колонка — это Bounds.left: косую
+                // начинаем ровно с неё, и она упирается в левую рамку.
+                // По вертикали штрих на каждом столбце — отрезок толщиной thick
+                // с центром в y, то есть вниз он вылезает на thick−1−thick/2.
+                // Сдвигаем вверх на эту величину и ещё на пиксель рамки, чтобы
+                // нижний край штриха лёг на последнюю внутреннюю строку, а не
+                // поверх рамки.
+                int left = li.Bounds.left;
+                int bottom = li.Bounds.bottom - 1 - (thick - 1 - thick / 2);
+
+                Line(left, bottom - len, left + len, bottom, thick, color);
+                Line(left, bottom - shortLen, left + shortLen, bottom, thick, color);
             }
         }
 
